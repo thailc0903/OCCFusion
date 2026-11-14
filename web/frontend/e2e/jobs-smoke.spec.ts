@@ -1,0 +1,58 @@
+import { test, expect } from '@playwright/test';
+import { writeFileSync } from 'node:fs';
+import path from 'node:path';
+import { apiPost, pageLogin } from './auth-helpers';
+
+test('exactly one real scene-0103 frame 1 job: web to CLI to CPU evaluation to viewer', async ({ page }) => {
+  test.setTimeout(600_000);
+  if (process.env.VIEWER_JOB_TEST_MODE !== 'real-smoke') throw new Error('Explicit real smoke harness required');
+  const output = process.env.VIEWER_E2E_OUTPUT!;
+  const errors: string[] = []; page.on('pageerror', e => errors.push(e.message));
+  await pageLogin(page); await page.goto('/jobs');
+  await expect(page.getByTestId('job-form-token')).toHaveText('3950bd41f74548429c0f7700ff3d8269');
+  await expect(page.getByLabel('Scene', { exact: true })).toHaveValue('scene-0103');
+  await expect(page.getByLabel('Frame', { exact: true })).toHaveValue('1');
+  const before = await (await page.request.get('/api/jobs')).json(); expect(before.jobs).toHaveLength(0);
+  const response = page.waitForResponse(r => r.request().method() === 'POST' && r.url().endsWith('/api/jobs'));
+  await page.getByRole('button', { name: 'Tạo job inference', exact: true }).click();
+  const createdResponse = await response; expect(createdResponse.status()).toBe(202);
+  const created = await createdResponse.json();
+  writeFileSync(path.join(output, 'created-job.json'), JSON.stringify(created, null, 2));
+  await expect(page.getByTestId('job-id')).toHaveText(created.id);
+  // No retries or second POST. Polling only reads this persistent job.
+  await expect.poll(async () => {
+    const info = await (await page.request.get(`/api/jobs/${created.id}`)).json();
+    writeFileSync(path.join(output, 'latest-job.json'), JSON.stringify(info, null, 2));
+    if (['failed', 'canceled'].includes(info.status)) throw new Error(JSON.stringify(info.error));
+    return info.status;
+  }, { timeout: 510_000, intervals: [2000, 5000] }).toBe('succeeded');
+  await expect(page.getByTestId('job-status')).toHaveText('Thành công');
+  await expect(page.getByTestId('launch-count')).toHaveText('1');
+  await expect(page.getByTestId('job-evaluation-status')).toHaveText('Có GT · đã đối chiếu token/hash');
+  await expect(page.getByText('KIỂM THỬ WORKER', { exact: false })).toHaveCount(0);
+  await page.evaluate(() => window.scrollTo(0, 0));
+  await page.screenshot({ path: path.join(output, 'real-job-completed.png'), fullPage: true });
+  await page.getByRole('link', { name: 'Mở kết quả trong viewer →' }).click();
+  await expect(page.getByLabel('Chọn run')).toHaveValue(`infer_job_${created.id}`);
+  await expect(page.locator('canvas')).toBeVisible();
+  await expect(page.locator('.viewport-count')).toContainText('điểm keyframe');
+  await expect(page.getByRole('img', { name: 'BEV prediction đã lưu của scene-0103, frame 1' })).toBeVisible();
+  await expect(page.getByTestId('evaluation-panel')).toHaveAttribute('data-status', 'matched');
+  const run = await (await page.request.get(`/api/runs/infer_job_${created.id}`)).json();
+  expect(run.sample_token).toBe(created.sample_token); expect(run.evaluation.matched.frame_count_evaluated).toBe(1);
+  const percent = new Intl.NumberFormat('vi-VN', { style: 'percent', maximumFractionDigits: 4 });
+  await expect(page.getByTestId('iou-value')).toHaveText(percent.format(run.evaluation.matched.metrics.occupancy_iou));
+  await expect(page.getByTestId('miou-value')).toHaveText(percent.format(run.evaluation.matched.metrics.semantic_miou));
+  await expect(page.getByTestId('review-state')).toContainText('unregistered');
+  expect((await apiPost(page.request, `/api/runs/infer_job_${created.id}/export`)).status()).toBe(409);
+  await page.getByRole('switch', { name: 'Hiển thị LiDAR' }).uncheck();
+  await page.getByRole('switch', { name: 'Hiển thị LiDAR' }).check();
+  await page.getByRole('button', { name: 'Reset camera', exact: true }).click();
+  const after = await (await page.request.get('/api/jobs')).json(); expect(after.jobs).toHaveLength(1);
+  expect(after.jobs[0].inference_launch_count).toBe(1);
+  const health = await (await page.request.get('/api/health')).json(); expect(health.model_modules_loaded).toBe(false);
+  expect(errors).toEqual([]);
+  await page.evaluate(() => window.scrollTo(0, 0));
+  await page.screenshot({ path: path.join(output, 'real-viewer.png'), fullPage: true });
+  writeFileSync(path.join(output, 'browser-evidence.json'), JSON.stringify({ status: 'passed', created, completed: after.jobs[0], run, health, errors, post_job_count: 1 }, null, 2));
+});

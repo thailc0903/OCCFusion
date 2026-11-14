@@ -1,0 +1,164 @@
+{
+  "schema_version": 1,
+  "profiles": [
+    {
+      "id": "occfusion_clr_fp32",
+      "label": "OCCFusion C+L+R · baseline FP32",
+      "python": "/home/hatis/.venvs/rav25/bin/python",
+      "config": "../configs/OccFusion_infer_mini.py",
+      "checkpoint": "../ckpt/Cam_Lidar_Radar_Atten3D.pth",
+      "data_root": "../data/nuscenes",
+      "gt_root": "../data/nuscenes/occ_samples/nuscenes_occ/samples",
+      "dataset_version": "v1.0-mini",
+      "device": "cuda:0",
+      "precision": "float32",
+      "autocast": false,
+      "batch_size": 1,
+      "tf32": {
+        "matmul": false,
+        "cudnn": true
+      },
+      "checkpoint_sha256": "d0e70f1cb172cb94cdd17075d13e102014b6c62cb753f0997e8f1c01932b8bcf",
+      "checkpoint_bytes": 1785062775,
+      "source_hashes": {
+        "configs/OccFusion.py": "5231450ec5dd1992e906166d7fdd47fbcfbf95e70553f103499e2b4f7cfb09e3",
+        "configs/OccFusion_infer_mini.py": "b0ca3ef8c27a89b990aa532ce57eb92dd2708eb7c20209dcfc7dab977f5f09b6",
+        "tools/infer_nuscenes_mini.py": "354cdb1dd6fe87559d4b715649db1a8962b3676d813d3d0710c816d4fb2b5ef2",
+        "tools/evaluate_occupancy.py": "04e7c8226cf4bac82c24213847f6ecf8dca71afb92beb4930573d3b317628647",
+        "occfusion/__init__.py": "bd6aaa03191960e981499071aa35ea47318c2cd2ed137d4bfe7f1ef882685394",
+        "occfusion/bottleneckaspp.py": "4b7a98f627836a071a11bb021bf2e404030b7b9c273a77f8866832904167b131",
+        "occfusion/custom_pack.py": "c2e1d515a1fbd1efa50a57f1db4e6984288ca7b39895787cdd779fbe197bca16",
+        "occfusion/data_preprocessor.py": "3e4d39a3a8f055a12dc7a845a02369897317bcb8b10c6b28d69478ec33334df2",
+        "occfusion/efficientvitblock.py": "86322fd5a977cf0fafc0ce419b0b4d4fef8f2dfaec6887d3f4b4bc1e61b38999",
+        "occfusion/evaluate.py": "16e23e13ea9bbd6b3330abe88e9d988d23e105f20f21a148c0569f1cd5ff8a11",
+        "occfusion/fusion.py": "ff38689f21815b8749e6218403d9a020be1266480a2b0391ae1231afe068269f",
+        "occfusion/loading.py": "fcc854644237d0e498a275873f0036341c68b0d43cdda0ede6edfd3f4ba65e3e",
+        "occfusion/loss.py": "44929e36dbe5e54d156e514d9e454f6bd0881b7537336abd886315ce8a1c98b5",
+        "occfusion/main.py": "1cbe9b4a3401b6883b8a876bdc28a06e7955e35d69fa08abf90ff1a72d3a9c21",
+        "occfusion/multi_scale_inverse_matrixVT.py": "e2354d1f2bd9972c1decb03544df497b4378a75ecb8e3d1ca81c6205f22ad5f4",
+        "occfusion/nuscenes_dataset.py": "1119d55b5a218b0f793ecc3894ba192e3d3d3cb27db3921a2413a6c5b9702951",
+        "occfusion/occhead.py": "7b8c18e4cf2e6e738a14b8ee9ee44e515120f5475a7c0f19a7fb5c214ac124af",
+        "occfusion/semantickitti_dataset.py": "23668ee4f83f85c0de78fa78ffbfce4a546942a69788efdf019ceb833de377af",
+        "occfusion/svfe.py": "015c3777c3466e13d590ee56fa1f9c98208f105366f30bdf6ccfd63a9f7aa19a",
+        "occfusion/window_attention.py": "861594e14426cb61df397ca5c9cff4fce32eedec130b047b2df790d3672c6d38"
+      },
+      "dataset_table_hashes": {
+        "attribute": "dc01438363e29188f25785884bb2431a7aa27ba0debbc359cb21cf1f00652210",
+        "calibrated_sensor": "13d35eeb08bfbc4d0c9eaede7824ff65efe16f8bf345aa7ba9fd75f9866a8d0f",
+        "category": "30f64fb175e5bd7db99892d90f9034481bca491f26600c5c0d1a56106b198dfe",
+        "ego_pose": "62817fd8b1633ed7925db46a29ec4c70f77116b866f248f0dc1bac4774459d70",
+        "instance": "38bbfcf53fb78469ec2c5b07fdafc9a44e9fbf9ab858d35a007dd8347428a14a",
+        "log": "d543b6fd127a6496ab9fa8de5c96a0887e0996e56f7a6c606de6d8b34827df58",
+        "map": "6b1d504987d0630e7e32affb7ae0d99fe9b427c757a315ec2f56fb09ebd1bfce",
+        "sample": "3c47794e2e6c09af4be7907b83f50750351180008d059899f42a9d405ed68586",
+        "sample_annotation": "49703705e98ddea281ca321aae3b7352a8b6495840fe654cf0717c5b7b721080",
+        "sample_data": "db18a189bd73648013d3e77ce6f5236d7c5997c0bdbf71166ddd8a6cb5c2c288",
+        "scene": "cc4dfeac83ac4f5d3e7fc899f90156891a21fa08bc0f8a1ac0e0a27cc1a0bfa6",
+        "sensor": "4d5c96570e2d8b09b88ce4c605e40ee43c4909f97bea5741185f18f92eb491ae",
+        "visibility": "87088bf2c78d070e1e215ff108f9c5c0958d124a14cce8f72bfb5d9651295749"
+      },
+      "geometry": {
+        "bounds": [
+          -50.0,
+          -50.0,
+          -5.0,
+          50.0,
+          50.0,
+          3.0
+        ],
+        "grid_shape": [
+          200,
+          200,
+          16
+        ],
+        "grid_axis_order": [
+          "x",
+          "y",
+          "z"
+        ],
+        "voxel_size": [
+          0.5,
+          0.5,
+          0.5
+        ],
+        "class_names": [
+          "free",
+          "barrier",
+          "bicycle",
+          "bus",
+          "car",
+          "construction_vehicle",
+          "motorcycle",
+          "pedestrian",
+          "traffic_cone",
+          "trailer",
+          "truck",
+          "driveable_surface",
+          "other_flat",
+          "sidewalk",
+          "terrain",
+          "manmade",
+          "vegetation"
+        ],
+        "voxel_center": "bounds_min + (index + 0.5) * voxel_size"
+      },
+      "splits": {
+        "mini_train": [
+          "scene-0061",
+          "scene-0553",
+          "scene-0655",
+          "scene-0757",
+          "scene-0796",
+          "scene-1077",
+          "scene-1094",
+          "scene-1100"
+        ],
+        "mini_val": [
+          "scene-0103",
+          "scene-0916"
+        ]
+      },
+      "input_contract": {
+        "image_preprocessing": {
+          "color_order": "BGR",
+          "resize": false,
+          "scale_factor_actual": 1.0,
+          "mean": [
+            103.53,
+            116.28,
+            123.675
+          ],
+          "std": [
+            1.0,
+            1.0,
+            1.0
+          ],
+          "pad_size_divisor": 32,
+          "note": "Repo image loader advertises scale_factor=0.2 despite no resize; this field is not packed or used by tensor forward.",
+          "batch_shape": [
+            1,
+            6,
+            3,
+            928,
+            1600
+          ]
+        },
+        "sensor_configuration": {
+          "use_camera": true,
+          "use_lidar": true,
+          "use_radar": true,
+          "use_occ3d": false,
+          "points_per_voxel": 35
+        },
+        "visibility_mask": null
+      },
+      "coordinate_contract": {
+        "name": "LIDAR_TOP at reference_timestamp_us",
+        "unit": "metres",
+        "axes": "native right-handed LIDAR_TOP xyz; calibration is authoritative",
+        "ego_axes": "x forward, y left, z up",
+        "matrix_convention": "column vectors; target_from_source @ [x,y,z,1]"
+      }
+    }
+  ]
+}

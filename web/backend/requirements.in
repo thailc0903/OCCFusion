@@ -1,0 +1,6 @@
+# Separate from requirements/occfusion-* and the rav25 model environment.
+fastapi==0.162.5
+uvicorn==0.54.0
+numpy==2.2.6
+httpx==0.28.1
+pytest==9.2.0

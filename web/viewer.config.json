@@ -1,0 +1,12 @@
+{
+  "runs_root": "../work_dirs",
+  "dataset_roots": ["../data/nuscenes"],
+  "cache_entries": 8,
+  "state_root": "../work/viewer",
+  "session_ttl_seconds": 28800,
+  "cookie_secure": false,
+  "allowed_origins": [
+    "http://localhost:3000", "http://127.0.0.1:3000",
+    "http://localhost:8000", "http://127.0.0.1:8000"
+  ]
+}
