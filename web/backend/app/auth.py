@@ -14,6 +14,8 @@ from .database import utc_now
 
 SESSION_COOKIE = 'rav25_session'
 CSRF_COOKIE = 'rav25_csrf'
+# ':' cannot occur in the token_urlsafe nonces used by legacy CSRF tokens.
+SESSION_CSRF_PREFIX = 's1:'
 SCRYPT_N, SCRYPT_R, SCRYPT_P = 2**17, 8, 1
 
 
@@ -92,16 +94,38 @@ class Identity:
 
     def mint_csrf(self):
         payload = f'{int(time.time())}.{secrets.token_urlsafe(32)}'
+        return self.sign_csrf(payload)
+
+    def sign_csrf(self, payload):
         signature = hmac.new(self.db.csrf_secret, payload.encode(), hashlib.sha256).hexdigest()
         return f'{payload}.{signature}'
 
+    def session_csrf(self, session):
+        """Stable across requests/processes, bound to this session and its expiry.
+
+        csrf_hash is an immutable login seed (or a legacy login-token hash).
+        Neither plaintext tokens nor new columns are needed to recover it.
+        """
+        binding = b'csrf-session-v1\0' + session['token_hash'].encode() + b'\0' + session['csrf_hash'].encode()
+        nonce = hmac.new(self.db.csrf_secret, binding, hashlib.sha256).hexdigest()
+        deadline_us = int(session['expires_at'] * 1_000_000)
+        return self.sign_csrf(f'{deadline_us}.{SESSION_CSRF_PREFIX}{nonce}')
+
     def valid_csrf(self, token):
         try:
+            if not isinstance(token, str) or len(token) > 256 or not token.isascii():
+                return False
             issued, nonce, signature = token.split('.')
             payload = f'{issued}.{nonce}'
             expected = hmac.new(self.db.csrf_secret, payload.encode(), hashlib.sha256).hexdigest()
-            return len(nonce) >= 32 and 0 <= time.time()-int(issued) <= self.settings.session_ttl_seconds and hmac.compare_digest(signature, expected)
-        except (ValueError, TypeError, AttributeError):
+            # s1 signs the session's absolute deadline, at microsecond precision.
+            # Legacy/anonymous tokens retain their original issue-time + TTL.
+            if nonce.startswith(SESSION_CSRF_PREFIX):
+                valid_time = time.time() < int(issued) / 1_000_000
+            else:
+                valid_time = 0 <= time.time()-int(issued) <= self.settings.session_ttl_seconds
+            return len(nonce) >= 32 and valid_time and hmac.compare_digest(signature, expected)
+        except (ValueError, TypeError, AttributeError, OverflowError):
             return False
 
     def check_csrf(self, request, session):
@@ -118,21 +142,27 @@ class Identity:
         cookie = request.cookies.get(CSRF_COOKIE, '')
         if not token or len(token) > 256 or not token.isascii() or not cookie.isascii() or not hmac.compare_digest(token, cookie) or not self.valid_csrf(token):
             raise HTTPException(403, 'Missing or invalid CSRF token')
-        if session and not hmac.compare_digest(digest(token), session['csrf_hash']):
-            raise HTTPException(403, 'CSRF token does not belong to this session')
+        if session:
+            stable = hmac.compare_digest(token, self.session_csrf(session))
+            # Keep already logged-in v4 sessions usable without rewriting rows
+            # or forcing logout; old signed tokens remain session-bound.
+            legacy = not token.split('.')[1].startswith(SESSION_CSRF_PREFIX) and hmac.compare_digest(digest(token), session['csrf_hash'])
+            if not (stable or legacy):
+                raise HTTPException(403, 'CSRF token does not belong to this session')
 
     def set_csrf(self, response, token):
         response.set_cookie(CSRF_COOKIE, token, max_age=self.settings.session_ttl_seconds,
                             httponly=True, secure=self.settings.cookie_secure, samesite='strict', path='/')
 
     def bootstrap(self, request, response, session):
-        token = request.cookies.get(CSRF_COOKIE, '')
-        if not self.valid_csrf(token) or (session and digest(token) != session['csrf_hash']):
-            token = self.mint_csrf()
-            if session:
-                with self.db.connect() as connection:
-                    connection.execute('UPDATE sessions SET csrf_hash=? WHERE token_hash=?',
-                                       (digest(token), session['token_hash']))
+        cookie = request.cookies.get(CSRF_COOKIE, '')
+        if session:
+            # Always return the same token, including stale/missing cookies and
+            # request snapshots. Response order cannot change the DB binding.
+            token = self.session_csrf(session)
+        else:
+            token = cookie if self.valid_csrf(cookie) else self.mint_csrf()
+        if token != cookie:
             self.set_csrf(response, token)
         response.headers['Cache-Control'] = 'no-store'
         if not session:
@@ -155,15 +185,18 @@ class Identity:
             row = connection.execute('SELECT * FROM users WHERE username=?', (username,)).fetchone()
         if not verify_password(password, row['password_hash'] if row else self.dummy_hash) or not row:
             raise HTTPException(401, 'Invalid username or password')
-        raw_token, csrf = secrets.token_urlsafe(32), self.mint_csrf()
+        raw_token = secrets.token_urlsafe(32)
+        csrf_hash = digest(secrets.token_urlsafe(32))
         expires = now + self.settings.session_ttl_seconds
+        token_hash = digest(raw_token)
+        csrf = self.session_csrf(dict(token_hash=token_hash, csrf_hash=csrf_hash, expires_at=expires))
         old = request.cookies.get(SESSION_COOKIE)
         with self.db.transaction() as connection:
             connection.execute('DELETE FROM sessions WHERE expires_at<=?', (now,))
             if old:
                 connection.execute('DELETE FROM sessions WHERE token_hash=?', (digest(old),))
             connection.execute('INSERT INTO sessions VALUES(?,?,?,?,?)',
-                               (digest(raw_token), row['id'], digest(csrf), now, expires))
+                               (token_hash, row['id'], csrf_hash, now, expires))
             connection.execute('DELETE FROM login_attempts WHERE key=?', (attempt_key,))
         response.set_cookie(SESSION_COOKIE, raw_token, max_age=self.settings.session_ttl_seconds,
                             httponly=True, secure=self.settings.cookie_secure, samesite='strict', path='/')

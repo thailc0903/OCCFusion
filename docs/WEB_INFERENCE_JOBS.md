@@ -299,6 +299,10 @@ tượng TestClient gián đoạn chưa được xác định. Lượt cuối đ
 pytest foreground bị SIGTERM (143) được chạy lại qua tiến trình tách riêng,
 có log/status tại `work_dirs/web_jobs_final_checks.*`.
 
+Race CSRF này đã được tái hiện bằng lịch xác định và sửa ở mốc tiếp theo:
+[CSRF_BOOTSTRAP_FIX.md](CSRF_BOOTSTRAP_FIX.md). Bootstrap authenticated không
+còn xoay hash; không đổi frontend jobs hoặc chạy lại GPU smoke để kiểm tra.
+
 ## File thuộc mốc này
 
 | Nhóm | File |

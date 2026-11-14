@@ -1,5 +1,9 @@
 # Đăng nhập, phân quyền và review bộ artifact
 
+**Sửa race CSRF bootstrap:** xem [CSRF_BOOTSTRAP_FIX.md](CSRF_BOOTSTRAP_FIX.md).
+Authenticated bootstrap trả token ổn định theo session, không UPDATE hash theo
+mỗi request. Giữ session v4 hiện có, không migration hay logout cưỡng bức.
+
 **Mốc evaluation:** xem [WEB_EVALUATION_REVIEW.md](WEB_EVALUATION_REVIEW.md).
 Manifest v1/approval bốn artifact giữ nguyên. Evaluation được ghép trên viewer
 và chỉ nằm trong export khi revision manifest v2 tương ứng được duyệt. Các mô tả
@@ -72,8 +76,8 @@ thất bại trong một phút cho cặp username/địa chỉ client.
 Cả cookie session và cookie CSRF đều **HttpOnly**, `SameSite=Strict`, host-only,
 `Path=/`, có `Max-Age`. JavaScript lấy CSRF token qua JSON bootstrap cùng origin,
 chỉ giữ trong bộ nhớ; không đọc cookie hoặc lưu token vào localStorage. Mọi
-POST, kể cả login/logout, phải gửi `X-CSRF-Token`. Server kiểm tra HMAC token,
-cookie/header trùng nhau và hash token gắn đúng phiên đăng nhập; đồng thời kiểm
+POST, kể cả login/logout, phải gửi `X-CSRF-Token`. Server kiểm tra HMAC và thời
+hạn token, cookie/header trùng nhau và token gắn đúng phiên đăng nhập; đồng thời kiểm
 tra Origin/Referer khi có, và chặn `Sec-Fetch-Site: cross-site`.
 
 `cookie_secure=false` phục vụ HTTP localhost. Khi dùng HTTPS, đặt
