@@ -1,6 +1,6 @@
 export type JobStatus = 'queued' | 'running' | 'succeeded' | 'failed' | 'canceled';
 export interface InferenceJob {
-  id: string; profile_id: string; profile_label: string; scene_name: string;
+  id: string; profile_id: string; profile_label: string; scene_name: string; task?:'occupancy'|'detection';
   frame_index: number; sample_token: string; split: string; status: JobStatus;
   phase: string; created_at: string; started_at: string | null; finished_at: string | null;
   cancel_requested: boolean; worker_stale: boolean; inference_launch_count: number;

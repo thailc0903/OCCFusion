@@ -5,6 +5,12 @@ Mốc này bổ sung job vào viewer RAV25 hiện có. Dùng lại CLI
 [evaluate_occupancy.py](../tools/evaluate_occupancy.py); không thay model,
 checkpoint, benchmark viewer hoặc giao thức review/export.
 
+Task CenterPoint LiDAR-only được mô tả tại
+[CENTERPOINT_DETECTION.md](CENTERPOINT_DETECTION.md), dùng profile opt-in riêng,
+CLI/validator/artifact detection riêng và cùng GPU lane. Profile/job cũ không
+có `task` vẫn là occupancy và giữ fingerprint cũ. Các bước evaluator và
+artifact occupancy dưới đây áp dụng cho task occupancy.
+
 ## Chạy trong WSL
 
 Không thêm dependency. Backend/worker điều phối dùng `.venv-web`, frontend

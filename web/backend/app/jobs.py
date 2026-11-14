@@ -14,6 +14,7 @@ from .database import utc_now
 from .evaluations import decode, digest
 from .review import canonical
 from .store import contained, InvalidArtifact
+from .task_types import task_of,DETECTION
 
 
 TERMINAL={'succeeded','failed','canceled'}
@@ -33,14 +34,14 @@ class Profiles:
             profile=dict(item)
             if not re.fullmatch(r'[a-zA-Z0-9_-]{1,64}',profile['id']) or profile['id'] in result:
                 raise InvalidArtifact('Invalid or duplicate profile id')
-            for name in ('python','config','checkpoint','data_root','gt_root'):
+            for name in ('python','config','checkpoint','data_root',*(() if task_of(profile)==DETECTION else ('gt_root',))):
                 path=Path(profile[name]).expanduser()
                 path=source.parent/path if not path.is_absolute() else path
                 # Resolving bin/python symlinks loses the venv's pyvenv.cfg.
                 # Execute the configured interpreter path, not /usr/bin/python.
                 profile[name]=os.path.abspath(path) if name=='python' else str(path.resolve())
             if profile['precision']!='float32' or profile['autocast'] is not False or profile['batch_size']!=1 or profile['device']!='cuda:0' or profile['tf32']!={'matmul':False,'cudnn':True}:
-                raise InvalidArtifact('Profile must retain the verified FP32/C+L+R baseline')
+                raise InvalidArtifact('Profile must retain the verified FP32/batch/TF32 settings')
             if not any(Path(profile['data_root'])==root.resolve() for root in self.settings.dataset_roots):
                 raise InvalidArtifact('Profile dataset is outside configured dataset roots')
             profile['fingerprint']=digest(canonical(profile).encode())
@@ -57,7 +58,7 @@ class Profiles:
         for profile in self.all().values():
             missing=[name for name in ('python','config','checkpoint') if not Path(profile[name]).is_file()]
             result.append(dict(id=profile['id'],label=profile['label'],precision=profile['precision'],
-                device=profile['device'],tf32=profile['tf32'],geometry=profile['geometry'],
+                device=profile['device'],tf32=profile['tf32'],geometry=profile['geometry'],task=task_of(profile),
                 checkpoint=Path(profile['checkpoint']).name,checkpoint_sha256=profile['checkpoint_sha256'],
                 config=Path(profile['config']).name,fingerprint=profile['fingerprint'],available=not missing,
                 unavailable_reason='Missing '+', '.join(missing) if missing else None))
@@ -141,13 +142,14 @@ class Jobs:
             worker=c.execute('SELECT * FROM inference_workers WHERE id=?',(job['worker_id'],)).fetchone() if job['worker_id'] else None
         profile=json.loads(job['profile_json'])
         return dict(id=identifier,profile_id=job['profile_id'],profile_label=profile['label'],scene_name=job['scene_name'],
+            task=task_of(profile),
             frame_index=job['frame_index'],sample_token=job['sample_token'],split=job['split'],status=job['status'],phase=job['phase'],
             created_at=job['created_at'],started_at=job['started_at'],finished_at=job['finished_at'],
             cancel_requested=bool(job['cancel_requested']),execution_mode=job['execution_mode'],
             worker_stale=bool(worker and time.time()-worker['heartbeat_at']>30),
             inference_launch_count=job['inference_launch_count'],evaluation_status=job['evaluation_status'],
             result=json.loads(job['result_json']) if job['result_json'] else None,error=json.loads(job['error_json']) if job['error_json'] else None,
-            events=events,result_url='/?run='+job['run_id'] if job['status']=='succeeded' else None,
+            events=events,result_url=('/detections?run=' if task_of(profile)==DETECTION else '/?run=')+job['run_id'] if job['status']=='succeeded' else None,
             precision=profile['precision'],tf32=profile['tf32'],config=Path(profile['config']).name,
             checkpoint=Path(profile['checkpoint']).name,checkpoint_sha256=profile['checkpoint_sha256'],
             review_note='Job completion does not register, submit or approve a review revision.')

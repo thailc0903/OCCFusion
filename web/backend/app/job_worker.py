@@ -16,6 +16,7 @@ from .job_results import JobResults, file_hash, file_records, verify_publication
 from .jobs import Jobs, TERMINAL
 from .review import canonical
 from .store import contained, InvalidArtifact
+from .task_types import task_of,DETECTION
 
 
 def process_ticks(pid):
@@ -41,13 +42,15 @@ class Commands:
 
     def inference(self,job,paths):
         p=json.loads(job['profile_json'])
-        return [p['python'],'-u',str(REPO/'tools/infer_nuscenes_mini.py'),
+        cli='tools/infer_centerpoint_mini.py' if task_of(p)==DETECTION else 'tools/infer_nuscenes_mini.py'
+        return [p['python'],'-u',str(REPO/cli),
             '--config',p['config'],'--checkpoint',p['checkpoint'],'--data-root',p['data_root'],
             '--scene-name',job['scene_name'],'--frame-index',str(job['frame_index']),
             '--device',p['device'],'--out-dir',str(paths['prediction'])]
 
     def evaluation(self,job,paths):
         p=json.loads(job['profile_json'])
+        if task_of(p)==DETECTION:return None
         return [p['python'],'-u',str(REPO/'tools/evaluate_occupancy.py'),
             '--run-dir',str(paths['prediction']),'--gt-root',p['gt_root'],'--data-root',p['data_root'],
             '--split',job['split'],'--verify-reference','--out',str(paths['evaluation']/'evaluation.json')]
@@ -97,12 +100,15 @@ class Worker:
                     if marker['profile_fingerprint']!=json.loads(job['profile_json'])['fingerprint']:
                         raise InvalidArtifact('Recovered publication profile mismatch')
                     meta,report,files=self.results.prediction(paths['run'],job)
-                    status,evaluation=self.results.evaluation(paths['eval_run']/'evaluation.json',job,meta,files)
-                    if status!=marker['evaluation']['status'] or marker['result']['metrics']!=evaluation.get('metrics'):
-                        raise InvalidArtifact('Recovered result/evaluation mismatch')
+                    if task_of(json.loads(job['profile_json']))==DETECTION:
+                        status='pending_dataset_evaluation'
+                    else:
+                        status,evaluation=self.results.evaluation(paths['eval_run']/'evaluation.json',job,meta,files)
+                        if status!=marker['evaluation']['status'] or marker['result']['metrics']!=evaluation.get('metrics'):
+                            raise InvalidArtifact('Recovered result/evaluation mismatch')
                     with self.db.transaction() as c:
                         self.jobs.event(c,job['id'],'recovered','Recovered an already complete, hash-verified publication without rerunning inference.',actor_type='recovery')
-                    self.terminal(job['id'],'succeeded',result=marker['result'],evaluation_status=marker['evaluation']['status'])
+                    self.terminal(job['id'],'succeeded',result=marker['result'],evaluation_status=status)
                     continue
                 except (OSError,ValueError,KeyError,TypeError) as error:
                     message='Published output could not be recovered: '+str(error)
@@ -125,7 +131,7 @@ class Worker:
         p=json.loads(job['profile_json'])
         if digest(canonical({k:v for k,v in p.items() if k!='fingerprint'}).encode())!=p['fingerprint']:
             raise InvalidArtifact('Stored job profile fingerprint mismatch')
-        if not any(self.jobs.paths(job['id'])['eval_run'].is_relative_to(root.resolve()) for root in self.settings.evaluation_directories):
+        if task_of(p)!=DETECTION and not any(self.jobs.paths(job['id'])['eval_run'].is_relative_to(root.resolve()) for root in self.settings.evaluation_directories):
             raise InvalidArtifact('Job evaluation output is outside configured evaluation roots')
         if not Path(p['python']).is_file() or not Path(p['checkpoint']).is_file():raise FileNotFoundError('Profile Python/checkpoint is missing')
         if Path(p['checkpoint']).stat().st_size!=p['checkpoint_bytes']:raise InvalidArtifact('Checkpoint file size differs from pinned profile')
@@ -201,6 +207,23 @@ class Worker:
                 (utc_now(),canonical(result),evaluation_status,job['id']))
             self.jobs.event(c,job['id'],'succeeded','Validated artifacts are available in the viewer; no review was automatically registered or approved.')
 
+    def publish_detection(self,job,paths,meta,report):
+        result=dict(run_id=job['run_id'],task=DETECTION,sample_token=job['sample_token'],box_count=report['box_count'],
+            evaluation_status='pending_dataset_evaluation',metrics=report['metrics'],timings_s=report['timings_s'],precision=report['precision'],
+            tf32=report['tf32'],allocator=report['vram'],review_registered=False,approved=False)
+        marker=dict(schema_version=1,status='complete',task=DETECTION,job_id=job['id'],run_id=job['run_id'],sample_token=job['sample_token'],
+            execution_mode=self.commands.mode,profile_fingerprint=json.loads(job['profile_json'])['fingerprint'],artifacts=file_records(paths['prediction'],DETECTION),
+            result=result,completed_at_utc=utc_now())
+        marker['fingerprint_sha256']=digest(canonical(marker).encode())
+        self.phase(job['id'],'publishing','Publishing detection bundle; dataset evaluation pending, no automatic approval.')
+        with self.db.transaction() as c:
+            if self.jobs.row(job['id'],c)['cancel_requested'] or self.stop_requested:raise InterruptedError('Canceled before detection publication')
+            if paths['run'].exists():raise FileExistsError('Detection output exists; overwrite refused')
+            (paths['prediction']/'job_result.json').write_text(canonical(marker)+'\n');paths['prediction'].rename(paths['run'])
+            verify_publication(paths['run'],job['id'])
+            c.execute("UPDATE inference_jobs SET status='succeeded',phase='succeeded',finished_at=?,result_json=?,evaluation_status=? WHERE id=?",(utc_now(),canonical(result),'pending_dataset_evaluation',job['id']))
+            self.jobs.event(c,job['id'],'succeeded','Detection available; mAP/NDS pending dataset evaluation; review unregistered.')
+
     def execute(self,job,lock_fd):
         paths=self.jobs.paths(job['id']);phase='preflight'
         try:
@@ -216,6 +239,8 @@ class Worker:
                 self.terminal(job['id'],'failed',error=error);return
             phase='artifact_validation';self.phase(job['id'],phase,'Checking prediction token, geometry, probability, calibration and pinned provenance.')
             meta,report,files=self.results.prediction(paths['prediction'],job)
+            if task_of(json.loads(job['profile_json']))==DETECTION:
+                self.publish_detection(job,paths,meta,report);return
             phase='evaluation';self.phase(job['id'],phase,'CPU evaluator running against SurroundOcc; no GT is fed into inference.')
             code=self.command(job,self.commands.evaluation(job,paths),phase,paths,lock_fd)
             if code not in (0,2):raise RuntimeError(f'CPU evaluator exited with code {code}; prediction retained privately')

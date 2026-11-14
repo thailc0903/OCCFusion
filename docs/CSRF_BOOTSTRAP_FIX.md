@@ -154,7 +154,55 @@ Không chạy inference, benchmark GPU hoặc huấn luyện. Browser dùng Swif
 CPU; Secure được kiểm tra qua HTTPS TestClient, chưa chạy TLS reverse proxy
 thật. Bản sửa chỉ đảm bảo convergence trong **cùng** authenticated session;
 response đã chụp trước logout có thể chứa thông tin user cũ nhưng không phục
-hồi session hoặc cấp quyền ghi. Chưa restart production để áp dụng bản backend
-mới; các kiểm chứng restart trong mốc này đều trên QA riêng.
+hồi session hoặc cấp quyền ghi. Tại mốc sửa/kiểm thử trên, chưa restart production;
+các kiểm chứng restart của mốc đó đều trên QA riêng. Lượt áp dụng sau nằm bên dưới.
 Khi áp dụng cần nạp bản backend mới đồng nhất cho các ASGI worker; không kiểm
 chứng rolling deployment trộn mã cũ còn xoay hash với định dạng token mới.
+
+## Đã áp dụng vào viewer local — 2026-11-14
+
+Đã đọc lại git diff (sạch), auth hash khớp bản đạt 114 tests tại HEAD
+`72b66e2f`. Trước restart có 5 job đã kết thúc, 0 queued/running. Khóa lane trước
+khi dừng worker đang rảnh để không nhận job mới giữa kiểm tra và shutdown;
+không hủy/retry job. Chỉ thao tác đúng process thuộc launcher của repo.
+
+```bash
+VIEWER_START_WORKER=0 bash tools/run_web_viewer.sh
+```
+
+| Process | Cũ | Sau áp dụng |
+| --- | --- | --- |
+| Launcher | 86636 | 96561 |
+| Backend Uvicorn | 86639 | 96565 |
+| Frontend Next.js | 86640 | 96566 |
+| GPU worker | 86641, idle | Đã dừng; không khởi động worker mới |
+
+Backend cũ đã thoát trước khi khởi động bản mới. Sau restart chỉ có một backend
+ở đúng cwd/module, không có worker hoặc backend cũ còn sống. SHA-256 auth.py
+`f03a8cc98c459ab5acebd54e63f23cd9af4ec88749c7c6d371459fe0addf8fc8`
+khớp `csrf_fix/summary.json`; PID mới được tạo sau khi dừng toàn bộ backend cũ.
+
+HTTP `/`, `/jobs`, `/benchmarks`, `/api/health`, `/api/auth/session` trả **200**;
+không đăng nhập gọi `/api/jobs`, `/api/runs` trả **401**. Direct/proxy health
+cùng workspace_id, `model_modules_loaded=false`. Chromium sạch mở login đạt,
+không page error; Windows PowerShell gọi localhost/jobs trả **200**.
+
+Một session production còn hạn và nguyên dữ liệu. Access log sau restart có
+GET protected `/api/jobs` và job log trả 200 từ phiên đang sử dụng. Không có
+browser session kết nối công cụ để kiểm tra chủ động POST/CSRF bằng phiên đó;
+không trích cookie/credential, không đăng nhập hoặc tạo account QA ở production.
+
+Audit sau restart: 12 bảng account/session/review/approval/jobs không đổi;
+5 job và launch count giữ nguyên; 668 hash artifact/source/checkpoint/config/
+profile cũ khớp; schema v4, quick_check ok. Không chạy inference/benchmark/
+huấn luyện và không lặp bộ 114 tests chỉ để restart.
+
+**Worker hiện tắt**: job mới sẽ giữ trạng thái queued cho tới khi worker được
+khởi động chủ động. PID launcher/log vẫn dùng `web_viewer_server.pid` và
+`web_viewer_server.log` hiện có. Bằng chứng:
+
+- [Restart/PID/code hash](../work_dirs/csrf_deploy/restart.json),
+  [HTTP/process/data/hash audit](../work_dirs/csrf_deploy/verification.json).
+- [Browser sạch](../work_dirs/csrf_deploy/browser.json),
+  [ảnh login](../work_dirs/csrf_deploy/login.png).
+- [Quan sát phiên cũ qua access log](../work_dirs/csrf_deploy/session_observation.json).

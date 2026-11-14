@@ -13,6 +13,7 @@ from .auth import require_role
 from .database import utc_now
 from .evaluations import EvaluationStore
 from .store import geometry, contained, InvalidArtifact
+from .task_types import DETECTION_FILES
 
 
 ARTIFACT_NAMES = ('occupancy.npz', 'metadata.json', 'report.json', 'bev.png')
@@ -42,7 +43,9 @@ class Reviews:
 
     def read_files(self, run_id):
         folder = self.store.folder(run_id)
-        paths = {name: self.store.artifact(folder, name) for name in ARTIFACT_NAMES}
+        try:task=json.loads(self.store.artifact(folder,'report.json').read_bytes()).get('task','occupancy')
+        except ValueError:task='detection' if (folder/'detections.json').is_file() and not (folder/'occupancy.npz').is_file() else 'occupancy'
+        paths = {name: self.store.artifact(folder, name) for name in (DETECTION_FILES if task=='detection' else ARTIFACT_NAMES)}
         try:
             return {name: path.read_bytes() for name, path in paths.items()}
         except FileNotFoundError as error:
@@ -50,6 +53,15 @@ class Reviews:
 
     def snapshot(self, run_id, evaluation_id=None):
         files = self.read_files(run_id)
+        if 'detections.json' in files:
+            if evaluation_id is not None:raise HTTPException(409,'Detection has no occupancy evaluation attachment')
+            from .detections import validate_detection
+            try:metadata,report,_=validate_detection(self.store.folder(run_id),self.settings,files)
+            except (ValueError,KeyError,OSError,TypeError) as e:raise HTTPException(409,'Invalid detection bundle: '+str(e)) from e
+            core=dict(schema_version=3,task='detection',run_id=run_id,sample_token=metadata['sample_token'],
+                sample_token_sources=['detections.json:sample_token','metadata.json:sample_token','report.json:sample_token'],npz_contains_sample_token=False,
+                artifacts={name:dict(sha256=hashlib.sha256(value).hexdigest(),bytes=len(value)) for name,value in files.items()})
+            return Snapshot(files,dict(core,fingerprint_sha256=hashlib.sha256(canonical(core).encode()).hexdigest()),metadata,report)
         try:
             def reject_constant(value):
                 raise ValueError(f'Non-finite JSON value: {value}')
@@ -175,7 +187,7 @@ class Reviews:
         changed, error = [], None
         try:
             files = self.revision_files(revision) if files is None else files
-            expected_names = set(ARTIFACT_NAMES) | ({'evaluation.json'} if manifest['schema_version'] == 2 else set())
+            expected_names = set(DETECTION_FILES) if manifest['schema_version']==3 and manifest.get('task')=='detection' else set(ARTIFACT_NAMES) | ({'evaluation.json'} if manifest['schema_version'] == 2 else set())
             if set(manifest['artifacts']) != expected_names:
                 raise HTTPException(409, 'Unsupported revision manifest artifacts')
             for name in manifest['artifacts']:

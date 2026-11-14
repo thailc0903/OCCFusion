@@ -118,7 +118,8 @@ class SensorCatalog:
             self.indexes[key] = (signature, tables)
         return self.indexes[key][1]
 
-    def lidar(self, metadata):
+    def lidar(self, metadata, bounds=None):
+        detector_bounds = bounds is not None
         token = metadata['sample_token']
         record = metadata['sensors']['keyframes']['LIDAR_TOP']
         version = metadata['dataset']['version']
@@ -185,14 +186,18 @@ class SensorCatalog:
         points = np.fromfile(path, dtype='<f4').reshape(-1, 5)
         if not np.isfinite(points).all():
             raise InvalidArtifact('LiDAR keyframe contains non-finite values')
-        _, _, bounds, _ = geometry(metadata)
+        if bounds is None:
+            _, _, bounds, _ = geometry(metadata)
+        else:
+            bounds = np.asarray(bounds,dtype=np.float64)
+            if bounds.shape!=(6,) or not np.isfinite(bounds).all() or np.any(bounds[3:]<=bounds[:3]):raise InvalidArtifact('Invalid detector bounds')
         inside = ((points[:, :3] > bounds[:3]) & (points[:, :3] < bounds[3:])).all(axis=1)
         visible = np.ascontiguousarray(points[inside, :4], dtype='<f4')
         return visible, dict(
             sample_token=token, sample_data_token=sd['token'],
             timestamp_us=sd['timestamp'], source='LiDAR keyframe only',
             original_point_count=len(points), point_count=len(visible),
-            range_filter='strictly inside occupancy XYZ bounds',
+            range_filter='strictly inside detector XYZ bounds' if detector_bounds else 'strictly inside occupancy XYZ bounds',
             coordinate_system=metadata['coordinate_system']['name'],
             verified_against='nuScenes sample, sample_data, scene, calibration and ego pose JSON',
             fields=['x', 'y', 'z', 'intensity'], stride=4, dtype='float32-le',
@@ -242,6 +247,7 @@ class RunStore:
                 if not self.artifact(folder, 'report.json').is_file():
                     continue
                 report = read_json(self.artifact(folder, 'report.json'))
+                if report.get('task')=='detection':continue
                 status = report.get('status', 'unknown')
                 check = report.get('check_only') is True or status == 'check_only_passed'
                 prediction = status == 'success' and not check and all(

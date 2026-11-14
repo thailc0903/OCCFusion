@@ -6,8 +6,9 @@ import type { SessionInfo } from '../lib/types';
 import Viewer from './Viewer';
 import BenchmarkViewer from './BenchmarkViewer';
 import JobsViewer from './JobsViewer';
+import DetectionExplorer from './DetectionExplorer';
 
-export default function AuthGate({ mode = 'runs' }: { mode?: 'runs' | 'benchmarks' | 'jobs' }) {
+export default function AuthGate({ mode = 'runs' }: { mode?: 'runs' | 'benchmarks' | 'jobs' | 'detections' }) {
   const [session, setSession] = useState<SessionInfo | null>(null);
   const [username, setUsername] = useState('');
   const [password, setPassword] = useState('');
@@ -50,7 +51,7 @@ export default function AuthGate({ mode = 'runs' }: { mode?: 'runs' | 'benchmark
       await load();
     } catch (error) { setError((error as Error).message); }
   }
-  if (session?.user) return mode === 'jobs' ? <JobsViewer key={session.user.id} user={session.user} onLogout={logout} /> : mode === 'benchmarks' ? <BenchmarkViewer key={session.user.id} user={session.user} onLogout={logout} /> : <Viewer key={session.user.id} user={session.user} onLogout={logout} />;
+  if (session?.user) return mode === 'detections' ? <DetectionExplorer key={session.user.id} user={session.user} onLogout={logout}/> : mode === 'jobs' ? <JobsViewer key={session.user.id} user={session.user} onLogout={logout} /> : mode === 'benchmarks' ? <BenchmarkViewer key={session.user.id} user={session.user} onLogout={logout} /> : <Viewer key={session.user.id} user={session.user} onLogout={logout} />;
   return <main className="auth-page">
     <section className="auth-intro"><span className="eyebrow">RAV25 / OCCUPANCY LAB</span><h1>Không gian phân tích.<br/><span>Kết quả có kiểm chứng.</span></h1><p>Đăng nhập để xem prediction đã lưu, trao đổi nhận xét và duyệt đúng bộ artifact cho bước tiếp theo.</p><div className="auth-steps"><span>01 · Kiểm tra dữ liệu</span><span>02 · Gửi review</span><span>03 · Duyệt & xuất kết quả</span></div></section>
     <section className="card login-card"><span className="micro-tag">LOCAL WORKSPACE</span><h2>Đăng nhập</h2><p>Tài khoản Engineer hoặc Reviewer của workspace.</p>

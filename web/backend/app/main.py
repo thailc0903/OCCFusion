@@ -16,6 +16,7 @@ from .store import InvalidArtifact, OutsideRoot, RunStore
 from .benchmarks import BenchmarkStore
 from .collections import CollectionReviews
 from .jobs import Jobs
+from .detections import DetectionStore
 
 
 class LoginBody(BaseModel):
@@ -61,10 +62,12 @@ def create_app(settings=None):
     benchmarks = BenchmarkStore(settings, store)
     collections = CollectionReviews(database, settings, benchmarks)
     jobs=Jobs(database,settings)
+    detections=DetectionStore(settings,store)
     app.state.store = store
     app.state.database, app.state.identity, app.state.reviews = database, identity, reviews
     app.state.benchmarks, app.state.collections = benchmarks, collections
     app.state.jobs=jobs
+    app.state.detections=detections
 
     @app.middleware('http')
     async def authentication_and_csrf(request: Request, call_next):
@@ -283,6 +286,45 @@ def create_app(settings=None):
         require_role(request.state.auth,'engineer')
         profiles=jobs.profiles.options()
         return dict(profiles=profiles,scenes_by_profile={p['id']:jobs.profiles.scenes(p['id']) for p in profiles})
+
+    @app.get('/api/detections')
+    def detection_list(request: Request):
+        values=detections.list()
+        if request.state.auth['role']=='reviewer':
+            with database.connect() as c:values=[v for v in values if reviews.has_submission(c,v['run_id'])]
+        return dict(runs=values)
+
+    @app.get('/api/detections/{run_id}')
+    def detection_detail(run_id: str,request: Request,occupancy_run_id: str | None=None):
+        reviews.require_view(request.state.auth,run_id)
+        occupancy=None
+        if occupancy_run_id is not None:
+            visible(request,occupancy_run_id)
+            occupancy=__import__('json').loads(store.artifact(store.folder(occupancy_run_id),'metadata.json').read_bytes())
+        return dict(detections.get(run_id,occupancy),review=reviews.describe(request.state.auth,run_id))
+
+    @app.get('/api/detections/{run_id}/lidar')
+    def detection_lidar(run_id: str,request: Request):
+        reviews.require_view(request.state.auth,run_id)
+        folder=store.folder(run_id);detections.get(run_id)
+        meta=__import__('json').loads((folder/'metadata.json').read_bytes())
+        data,_=store.catalog.lidar(meta,meta['bounds'])
+        return Response(data.tobytes(),media_type='application/octet-stream')
+
+    @app.get('/api/runs/{run_id}/detections')
+    def detection_matches(run_id: str,request: Request):
+        visible(request,run_id)
+        meta=__import__('json').loads(store.artifact(store.folder(run_id),'metadata.json').read_bytes())
+        matches=[];rejected=[]
+        for item in detections.list():
+            if item['sample_token']!=meta['sample_token']:continue
+            try:
+                reviews.require_view(request.state.auth,item['run_id'])
+                matches.append(detections.get(item['run_id'],meta))
+            except HTTPException as e:
+                if e.status_code!=403:raise
+            except (ValueError,KeyError,OSError) as e:rejected.append(dict(run_id=item['run_id'],status='invalid',reason=str(e)))
+        return dict(matches=matches,rejected=rejected,scope='Detection snapshots reviewed/exported separately from occupancy')
 
     @app.get('/api/jobs')
     def job_list(request: Request):

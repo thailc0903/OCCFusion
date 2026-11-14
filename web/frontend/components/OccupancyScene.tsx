@@ -4,6 +4,7 @@ import { useEffect, useRef } from 'react';
 import * as THREE from 'three';
 import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
 import type { PredictionRun } from '../lib/types';
+import {boxCorners,type DetectionBox} from '../lib/detections';
 
 type SceneState = {
   renderer: THREE.WebGLRenderer;
@@ -12,21 +13,23 @@ type SceneState = {
   controls: OrbitControls;
   mesh: THREE.InstancedMesh;
   points?: THREE.Points;
+  boxes?: THREE.LineSegments;
   dirty: boolean;
   reset: () => void;
 };
 
 interface Props {
-  run: PredictionRun;
+  run: Pick<PredictionRun,'bounds'|'voxel_size'|'classes'> & {occupancy?:{point_count:number}};
   voxels: Float32Array;
   lidar: Float32Array | null;
   showLidar: boolean;
   height: [number, number];
   resetVersion: number;
   onError: (message: string) => void;
+  boxes?: DetectionBox[];
 }
 
-export default function OccupancyScene({ run, voxels, lidar, showLidar, height, resetVersion, onError }: Props) {
+export default function OccupancyScene({ run, voxels, lidar, showLidar, height, resetVersion, onError,boxes=[] }: Props) {
   const host = useRef<HTMLDivElement>(null);
   const state = useRef<SceneState | null>(null);
 
@@ -112,7 +115,7 @@ export default function OccupancyScene({ run, voxels, lidar, showLidar, height, 
     }
     const geometry = new THREE.BoxGeometry(...run.voxel_size.map(value => value * 0.97) as [number, number, number]);
     const material = new THREE.MeshLambertMaterial({ color: 0xffffff });
-    const mesh = new THREE.InstancedMesh(geometry, material, Math.max(1, run.occupancy.point_count));
+    const mesh = new THREE.InstancedMesh(geometry, material, Math.max(1, run.occupancy?.point_count || 0));
     mesh.count = 0;
     mesh.instanceMatrix.setUsage(THREE.DynamicDrawUsage);
     mesh.frustumCulled = false;
@@ -137,6 +140,7 @@ export default function OccupancyScene({ run, voxels, lidar, showLidar, height, 
         renderer.render(scene, camera);
         renderer.domElement.dataset.renderedInstances = String(mesh.count);
         renderer.domElement.dataset.renderedPoints = String(current.points?.visible ? current.points.geometry.getAttribute('position').count : 0);
+        renderer.domElement.dataset.renderedBoxes = String(current.boxes ? current.boxes.geometry.getAttribute('position').count / 24 : 0);
         renderer.domElement.dataset.webglReady = 'true';
         renderer.domElement.dataset.cameraPosition = camera.position.toArray().map(value => value.toFixed(3)).join(',');
         current.dirty = false;
@@ -201,6 +205,15 @@ export default function OccupancyScene({ run, voxels, lidar, showLidar, height, 
   }, [run, lidar, showLidar, height]);
 
   useEffect(() => { state.current?.reset(); }, [resetVersion]);
+
+  useEffect(()=>{
+    const current=state.current;if(!current)return;
+    if(current.boxes){current.scene.remove(current.boxes);current.boxes.geometry.dispose();(current.boxes.material as THREE.Material).dispose();current.boxes=undefined;}
+    const vertices:number[]=[];const edges=[[0,1],[1,2],[2,3],[3,0],[4,5],[5,6],[6,7],[7,4],[0,4],[1,5],[2,6],[3,7]];
+    for(const box of boxes){const corners=boxCorners(box);for(const [a,b] of edges)vertices.push(...corners[a],...corners[b]);}
+    if(vertices.length){const g=new THREE.BufferGeometry();g.setAttribute('position',new THREE.Float32BufferAttribute(vertices,3));current.boxes=new THREE.LineSegments(g,new THREE.LineBasicMaterial({color:0xffcc45,depthTest:false}));current.boxes.renderOrder=10;current.scene.add(current.boxes);}
+    current.dirty=true;
+  },[run,boxes]);
 
   return <div className="scene-host" ref={host} />;
 }

@@ -7,6 +7,7 @@ import re
 from .evaluations import ARTIFACTS, EvaluationStore, decode, digest
 from .review import canonical
 from .store import contained, InvalidArtifact, RunStore
+from .task_types import task_of,DETECTION,DETECTION_FILES
 
 
 PREDICTION_FILES=(*ARTIFACTS,'resolved_config.py')
@@ -19,8 +20,8 @@ def file_hash(path):
     return value.hexdigest()
 
 
-def file_records(folder):
-    return {name:dict(sha256=file_hash(contained(folder/name,folder)),bytes=(folder/name).stat().st_size) for name in PREDICTION_FILES}
+def file_records(folder,task='occupancy'):
+    return {name:dict(sha256=file_hash(contained(folder/name,folder)),bytes=(folder/name).stat().st_size) for name in (DETECTION_FILES if task==DETECTION else PREDICTION_FILES)}
 
 
 def verify_publication(folder,expected_id=None):
@@ -31,8 +32,10 @@ def verify_publication(folder,expected_id=None):
     if not re.fullmatch('[0-9a-f]{32}',identifier) or marker['run_id']!='infer_job_'+identifier or folder.name!=marker['run_id'] or marker['status']!='complete' or expected_id is not None and identifier!=expected_id:
         raise InvalidArtifact('Job publication identity/status mismatch')
     core={k:v for k,v in marker.items() if k!='fingerprint_sha256'}
-    if digest(canonical(core).encode())!=marker['fingerprint_sha256'] or marker['artifacts']!=file_records(folder):
+    if digest(canonical(core).encode())!=marker['fingerprint_sha256'] or marker['artifacts']!=file_records(folder,marker.get('task','occupancy')):
         raise InvalidArtifact('Job publication artifact hash mismatch')
+    if marker.get('task')==DETECTION:
+        return marker
     evaluation=marker['evaluation']
     if evaluation['directory']!='eval_job_'+identifier:
         raise InvalidArtifact('Job evaluation directory mismatch')
@@ -48,6 +51,16 @@ class JobResults:
 
     def prediction(self,folder,job):
         profile=json.loads(job['profile_json'])
+        if task_of(profile)==DETECTION:
+            from .detections import validate_detection
+            meta,report,doc=validate_detection(folder,self.settings)
+            if meta['sample_token']!=job['sample_token'] or meta['scene']['name']!=job['scene_name'] or meta['frame_index']!=job['frame_index']:
+                raise InvalidArtifact('Detection output does not match job token/scene/frame')
+            if meta['checkpoint']['sha256']!=profile['checkpoint_sha256'] or meta['checkpoint']['bytes']!=profile['checkpoint_bytes'] or meta['config']['sha256']!=file_hash(Path(profile['config'])):
+                raise InvalidArtifact('Detection config/checkpoint provenance mismatch')
+            if meta['code']['inference_script_sha256']!=profile['source_hashes']['tools/infer_centerpoint_mini.py'] or report['tf32']!=profile['tf32']:
+                raise InvalidArtifact('Detection source/TF32 mismatch')
+            return meta,report,{name:(folder/name).read_bytes() for name in DETECTION_FILES}
         files={name:contained(folder/name,folder).read_bytes() for name in ARTIFACTS}
         meta,report=decode(files['metadata.json']),decode(files['report.json'])
         loaded=self.store.load(job['run_id'],folder)

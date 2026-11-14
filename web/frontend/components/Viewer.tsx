@@ -6,6 +6,8 @@ import { clearPayloadCache, getJSON, getPacked } from '../lib/api';
 import type { PredictionRun, ReviewInfo, RunDetail, RunSummary, User } from '../lib/types';
 import ReviewPanel from './ReviewPanel';
 import EvaluationPanel from './EvaluationPanel';
+import DetectionOverlay from './DetectionOverlay';
+import type {DetectionBox} from '../lib/detections';
 
 const Scene = dynamic(() => import('./OccupancyScene'), { ssr: false, loading: () => <div className="scene-loading"><span className="spinner" />Đang khởi tạo không gian 3D…</div> });
 const number = new Intl.NumberFormat('vi-VN');
@@ -41,6 +43,8 @@ function Timing({ run }: { run: RunDetail }) {
 
 export default function Viewer({ user, onLogout }: { user: User; onLogout: () => Promise<void> }) {
   const [runs, setRuns] = useState<RunSummary[]>([]);
+  const [detectionBoxes,setDetectionBoxes]=useState<DetectionBox[]>([]);
+  const receiveBoxes=useCallback((value:DetectionBox[])=>setDetectionBoxes(value),[]);
   const [selected, setSelected] = useState('');
   const [run, setRun] = useState<RunDetail | null>(null);
   const [occupancy, setOccupancy] = useState<Float32Array | null>(null);
@@ -71,7 +75,7 @@ export default function Viewer({ user, onLogout }: { user: User; onLogout: () =>
   useEffect(() => {
     if (!selected) return;
     const controller = new AbortController();
-    setLoading(true); setError(''); setSceneError(''); setRun(null); setOccupancy(null); setLidar(null); setLidarError('');
+    setLoading(true); setError(''); setSceneError(''); setRun(null); setOccupancy(null); setLidar(null); setLidarError(''); setDetectionBoxes([]);
     (async () => {
       const detail = await getJSON<RunDetail>(`/api/runs/${encodeURIComponent(selected)}`, controller.signal);
       let data: Float32Array | null = null;
@@ -141,6 +145,7 @@ export default function Viewer({ user, onLogout }: { user: User; onLogout: () =>
         <div className="workspace-label">PHÂN TÍCH DỮ LIỆU</div>
         <div className="nav-current"><Glyph name="layers"/> Occupancy explorer <span>01</span></div>
         <a className="benchmark-link" href="/benchmarks">Benchmark mini_val ↗</a>
+        <a className="benchmark-link" href="/detections">CenterPoint detection ↗</a>
         {user.role === 'engineer' && <a className="benchmark-link" href="/jobs">Chạy inference một frame ↗</a>}
         <section className="run-selector">
           <div className="section-caption"><label htmlFor="run-select">RUN ĐÃ LƯU</label><button className="icon-button" onClick={refresh} aria-label="Làm mới danh sách run" title="Đọc lại danh sách run"><Glyph name="refresh" size={15}/></button></div>
@@ -197,7 +202,7 @@ export default function Viewer({ user, onLogout }: { user: User; onLogout: () =>
               <section className="card viewport-card">
                 <div className="viewport-heading"><div><h2>Semantic occupancy <span>3D</span></h2><p>LIDAR_TOP · mét · Z hướng lên</p></div><button className="reset-button" onClick={() => setResetVersion(value => value + 1)}><Glyph name="reset" size={15}/> Reset camera</button></div>
                 <div className="viewport">
-                  <Scene run={prediction} voxels={visible} lidar={lidar} showLidar={showLidar} height={height} resetVersion={resetVersion} onError={reportSceneError}/>
+                  <Scene run={prediction} voxels={visible} lidar={lidar} showLidar={showLidar} height={height} resetVersion={resetVersion} onError={reportSceneError} boxes={detectionBoxes}/>
                   <div className="viewport-count"><span className="live-square"/><b data-testid="visible-count">{number.format(visible.length / 5)}</b> voxel{showLidar && lidar && <><span className="count-divider"/> {number.format(visibleLidarCount)} điểm keyframe</>}</div>
                   <div className="axis-legend" aria-label="Trục tọa độ"><span className="axis-x">X</span><span className="axis-y">Y</span><span className="axis-z">Z ↑</span><small>LiDAR reference</small></div>
                   <div className="viewport-hint">Kéo để xoay <span>·</span> Cuộn để zoom <span>·</span> Chuột phải để dịch</div>
@@ -210,6 +215,7 @@ export default function Viewer({ user, onLogout }: { user: User; onLogout: () =>
               <aside className="right-column">
                 <section className="card bev-card"><div className="card-title"><h2>Bird’s-eye view</h2><span className="micro-tag">BEV</span></div><div className="bev-image"><img src={prediction.bev_url} alt={`BEV prediction đã lưu của ${prediction.scene.name}, frame ${prediction.frame_index}`} width={prediction.bev.width} height={prediction.bev.height}/><span className="bev-axis-y">{prediction.bev.rows === 'y decreasing' ? 'y ↑' : prediction.bev.rows}</span><span className="bev-axis-x">{prediction.bev.columns === 'x increasing' ? 'x →' : prediction.bev.columns}</span></div><p className="bev-caption">BEV gốc · toàn bộ lớp<span>{prediction.bev.width} × {prediction.bev.height}</span></p></section>
                 <EvaluationPanel run={prediction}/>
+                <DetectionOverlay key={prediction.run_id} runId={prediction.run_id} onBoxes={receiveBoxes}/>
               </aside>
             </div>
           </> : <section className="card no-prediction" data-testid="no-prediction"><Glyph name="layers" size={36}/><h2>{run.kind === 'check_only' ? 'Run check-only — chưa có prediction' : 'Run chưa có prediction thành công'}</h2><p>{run.kind === 'check_only' ? 'Run này đã kiểm tra dữ liệu và checkpoint trên CPU, chưa chạy forward.' : run.error?.message || 'Không có artifact prediction hợp lệ để hiển thị.'}</p><p>Chọn một run success có occupancy đã lưu để xem không gian 3D.</p></section>}
