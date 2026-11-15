@@ -103,6 +103,10 @@ class SensorCatalog:
         self.settings = settings
         self.indexes = {}
 
+    def camera_frame(self, metadata):
+        from .camera_sensors import camera_frame
+        return camera_frame(self, metadata)
+
     def tables(self, root, version):
         if not re.fullmatch(r'v[0-9]+\.[0-9]+-[a-z]+', version):
             raise InvalidArtifact('Unsupported dataset version identifier')

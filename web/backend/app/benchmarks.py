@@ -436,4 +436,6 @@ class BenchmarkStore:
         if record(metadata_bytes)!=context['hashes'][f'frames/{token}/metadata.json']:
             raise InvalidArtifact('Occupancy frame metadata changed during playback')
         loaded.metadata=decode(metadata_bytes)
+        loaded.camera_artifacts={name:(frame['prediction_folder']/name,
+            context['hashes'][f'frames/{token}/{name}']) for name in PRED_FILES}
         return detail,loaded

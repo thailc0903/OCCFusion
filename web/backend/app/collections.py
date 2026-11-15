@@ -194,13 +194,17 @@ class CollectionReviews:
                         exported_at=utc_now(),exported_by=user['username'],events=events,
                         status=snapshot.detail['status'],expected_frame_count=snapshot.detail['expected_frame_count'],
                         successful_frame_count=snapshot.detail['successful_frame_count'],metrics=snapshot.detail['metrics'],
-                        metric_unit='ratio_0_1',metric_source=snapshot.detail.get('metric_source_export','benchmark/metrics_pooled.json'),
+                        metric_unit=snapshot.detail.get('metric_unit','ratio_0_1'),metric_source=snapshot.detail.get('metric_source_export','benchmark/metrics_pooled.json'),
                         export_timings_s=dict(validation=validation_s,source_read_hash_zip=time.perf_counter()-started-validation_s),
                         latency_source=snapshot.detail.get('latency_source_export','benchmark/initial_report.json'),
                         playback_note=snapshot.detail['playback_note'])
                     if snapshot.detail.get('task')=='detection':
                         review.update(kind='detection_benchmark_collection_review',task='detection',
                             protocol_fingerprint=snapshot.manifest['protocol_fingerprint'])
+                    if snapshot.detail.get('task')=='camera':
+                        review.update(kind='camera_frame_collection_review',task='camera',
+                            projection_protocol=snapshot.manifest['projection_protocol'],
+                            source_images_included=False,metric_unit=None,metrics=None)
                     archive.writestr('manifest.json',canonical(snapshot.manifest)+'\n')
                     archive.writestr('review.json',canonical(review)+'\n')
                     archive.close()  # ZIP close failure rolls back the export event.

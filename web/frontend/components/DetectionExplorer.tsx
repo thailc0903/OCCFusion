@@ -6,6 +6,7 @@ import type {ReviewInfo,User,RunSummary} from '../lib/types';
 import type {DetectionRun,DetectionBox} from '../lib/detections';
 import DetectionOverlay from './DetectionOverlay';
 import ReviewPanel from './ReviewPanel';
+import CameraViewer from './CameraViewer';
 const Scene=dynamic(()=>import('./OccupancyScene'),{ssr:false});const EMPTY=new Float32Array();
 
 export default function DetectionExplorer({user,onLogout}:{user:User;onLogout:()=>Promise<void>}){
@@ -22,6 +23,7 @@ export default function DetectionExplorer({user,onLogout}:{user:User;onLogout:()
    <section className="run-strip"><b>{run.scene.name} / {run.frame_index}</b><code data-testid="detection-token">{run.sample_token}</code><span>{run.precision} · {run.box_count} box gốc</span></section>
    <div className="visual-grid"><section className="card viewport-card"><div className="viewport-heading"><h2>Box + LiDAR · LIDAR_TOP, Z ↑, m</h2><label><input type="checkbox" checked={showLidar} onChange={e=>setShowLidar(e.target.checked)}/>LiDAR</label><button onClick={()=>setReset(v=>v+1)}>Reset camera</button></div><div className="viewport"><Scene run={run} voxels={EMPTY} lidar={lidar} showLidar={showLidar} height={[-5,3]} resetVersion={reset} onError={sceneError} boxes={boxes}/></div></section><aside><DetectionOverlay key={run.run_id} runId={run.run_id} onBoxes={receiveBoxes}/></aside></div>
    <section className="card detection-panel"><h2>Nguồn và phép đo</h2><p>{run.source}</p><code>{run.checkpoint.path}</code><p>SHA-256 {run.checkpoint.sha256}</p><p>mAP / NDS: <b>null · pending_dataset_evaluation</b>. Detection GT annotations: {run.ground_truth.detection_annotations_available?'có':'không có cho sample'}. Một frame chưa đánh giá toàn mini_val.</p><p>Forward {run.timings_s.forward?.toFixed(3)} s · pipeline {run.timings_s.pipeline_total?.toFixed(3)} s · tiến trình {run.timings_s.process_until_report?.toFixed(3)} s.</p><p>PyTorch allocator peak allocated {run.allocator.peak_allocated_bytes} / reserved {run.allocator.peak_reserved_bytes} byte; không phải VRAM vật lý đo độc lập.</p>{occupancy.filter(r=>r.sample_token===run.sample_token&&r.prediction_available).map(r=><p key={r.run_id}><a href={`/?run=${r.run_id}`}>Mở overlay cùng sample trên occupancy: {r.run_id} ↗</a></p>)}</section>
+   <CameraViewer key={'camera-'+run.run_id} endpoint={'/api/runs/'+encodeURIComponent(run.run_id)+'/cameras'} user={user}/>
    <ReviewPanel run={run} user={user} onChange={reviewChanged}/>
   </>}
  </main></div>;

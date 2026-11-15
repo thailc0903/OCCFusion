@@ -294,6 +294,14 @@ def create_app(settings=None):
                 rejected.append(dict(benchmark_id=item['benchmark_id'],reason=str(error)))
         return dict(matches=matches,rejected=rejected,scope='Display overlay only; occupancy is excluded from detection collection approval/export')
 
+    # Register camera routes before the generic frame payload route.
+    from .cameras import CameraStore
+    from .camera_routes import register_camera_routes
+    cameras=CameraStore(settings,store,reviews,benchmarks)
+    camera_reviews=CollectionReviews(database,settings,cameras)
+    app.state.cameras,app.state.camera_reviews=cameras,camera_reviews
+    register_camera_routes(app,cameras,camera_reviews,visible,collection_visible,CommentBody,TransitionBody,DecisionBody)
+
     @app.get('/api/benchmarks/{benchmark_id}/frames/{sample_token}/{kind}')
     def benchmark_payload(benchmark_id: str, sample_token: str, kind: Literal['occupancy','lidar','bev'], request: Request, bundle: str | None = None):
         collection_visible(request,benchmark_id)

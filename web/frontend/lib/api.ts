@@ -46,6 +46,10 @@ export async function downloadCollection(collectionId: string) {
   return downloadCollectionOrRun(`/api/collections/${encodeURIComponent(collectionId)}/export`, `${collectionId}-collection-approved.zip`);
 }
 
+export async function downloadCamera(endpoint: string) {
+  return downloadCollectionOrRun(endpoint + '/export', 'camera-frame-approved.zip');
+}
+
 async function downloadCollectionOrRun(endpoint: string, fallback: string) {
   const response = await writeRequest(endpoint);
   const blob = await response.blob();

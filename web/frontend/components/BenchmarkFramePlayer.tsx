@@ -3,13 +3,14 @@
 import dynamic from 'next/dynamic';
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { getJSON, getPacked } from '../lib/api';
-import type { BenchmarkFrame, PredictionRun, RadarAuditFrame } from '../lib/types';
+import type { BenchmarkFrame, PredictionRun, RadarAuditFrame, User } from '../lib/types';
+import CameraViewer from './CameraViewer';
 import EvaluationPanel from './EvaluationPanel';
 
 const Scene = dynamic(() => import('./OccupancyScene'), { ssr: false });
 const number = new Intl.NumberFormat('vi-VN');
 
-export default function BenchmarkFramePlayer({ id, frame, audit }: { id: string; frame: BenchmarkFrame; audit?: RadarAuditFrame }) {
+export default function BenchmarkFramePlayer({ id, frame, audit, user }: { id: string; frame: BenchmarkFrame; audit?: RadarAuditFrame; user: User }) {
   const [run, setRun] = useState<PredictionRun | null>(null);
   const [voxels, setVoxels] = useState<Float32Array | null>(null);
   const [lidar, setLidar] = useState<Float32Array | null>(null);
@@ -72,5 +73,6 @@ export default function BenchmarkFramePlayer({ id, frame, audit }: { id: string;
       </section>
       <aside className="right-column"><section className="card bev-card"><div className="card-title"><h2>BEV đã xuất</h2></div><div className="bev-image"><img src={run.bev_url} alt={`BEV benchmark ${run.scene.name} frame ${run.frame_index}`} width={run.bev.width} height={run.bev.height}/></div></section><EvaluationPanel run={run} collection/></aside>
     </div>
+    <CameraViewer key={id+':'+frame.sample_token} endpoint={'/api/benchmarks/'+encodeURIComponent(id)+'/frames/'+frame.sample_token+'/cameras'} user={user}/>
   </div>;
 }

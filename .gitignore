@@ -16,6 +16,7 @@ node_modules/
 .next/
 .next-qa/
 .next-detection-benchmark-qa/
+.next-camera-qa/
 out/
 coverage/
 test-results/

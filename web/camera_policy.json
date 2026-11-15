@@ -1,0 +1,14 @@
+{
+  "schema_version": 1,
+  "id": "nuscenes-release-publisher-privacy-v1",
+  "dataset_version": "v1.0-mini",
+  "source": "nuScenes release supplied in the configured dataset root",
+  "publisher_documentation": "https://www.nuscenes.org/data-format",
+  "publisher_section": "Privacy protection",
+  "publisher_processing": "The publisher documents blurring faces and license plates in released nuScenes images.",
+  "application_processing": "No automatic PII detector is run. Supplemental masks are explicit Engineer annotations on a separate derivative.",
+  "display_rule": "Require registered source hash, camera calibration, image dimensions and matching policy. Show publisher provenance and individual review state.",
+  "export_rule": "Require an explicit current Engineer review for each image, a full-size PNG derivative, and a separately approved camera collection revision.",
+  "does_not_guarantee_all_pii_removed": true,
+  "human_review_default": "not_reviewed"
+}

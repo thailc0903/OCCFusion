@@ -115,7 +115,7 @@ export interface RadarAuditFrame {
     prev_token: string; file_exists: boolean; eligible_count: number }[];
 }
 export interface CollectionReviewInfo extends Omit<ReviewInfo, 'manifest' | 'revisions'> {
-  manifest?: { kind: 'occfusion_benchmark_collection' | 'centerpoint_detection_benchmark_collection'; schema_version: number; successful_frame_count: number;
+  manifest?: { kind: 'occfusion_benchmark_collection' | 'centerpoint_detection_benchmark_collection' | 'rav25_camera_frame_collection'; schema_version: number; successful_frame_count: number;
     expected_frame_count: number; artifacts: Record<string,{sha256: string; bytes: number}> };
   revisions?: { id: number; number: number; state: string; fingerprint: string; approved_at: string | null }[];
   error?: string | null;

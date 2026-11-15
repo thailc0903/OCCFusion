@@ -2,13 +2,14 @@
 import dynamic from 'next/dynamic';
 import {useCallback,useEffect,useMemo,useState} from 'react';
 import {getJSON,getPacked} from '../lib/api';
-import type {BenchmarkFrame,PredictionRun} from '../lib/types';
+import type {BenchmarkFrame,PredictionRun,User} from '../lib/types';
+import CameraViewer from './CameraViewer';
 import type {DetectionBenchmarkFrame} from '../lib/detectionBenchmarks';
 const Scene=dynamic(()=>import('./OccupancyScene'),{ssr:false});
 const EMPTY=new Float32Array();
 const number=new Intl.NumberFormat('vi-VN');
 
-export default function DetectionBenchmarkFramePlayer({id,frame}:{id:string;frame:BenchmarkFrame}) {
+export default function DetectionBenchmarkFramePlayer({id,frame,user}:{id:string;frame:BenchmarkFrame;user:User}) {
   const [run,setRun]=useState<DetectionBenchmarkFrame|null>(null),[lidar,setLidar]=useState<Float32Array|null>(null);
   const [showLidar,setShowLidar]=useState(true),[showBoxes,setShowBoxes]=useState(true),[score,setScore]=useState(.35);
   const [classes,setClasses]=useState<Set<number>>(new Set()),[reset,setReset]=useState(0),[error,setError]=useState('');
@@ -61,5 +62,6 @@ export default function DetectionBenchmarkFramePlayer({id,frame}:{id:string;fram
       </div>
       <p className="benchmark-frame-timing">Score/lớp chỉ lọc hiển thị; prediction đánh giá giữ nguyên. Score chưa hiệu chuẩn. Occupancy overlay ghép đúng token/timestamp/calibration, không nằm trong approval/export collection detection.</p>
     </div>
+    <CameraViewer key={base} endpoint={base+'/cameras'} user={user}/>
   </section>;
 }

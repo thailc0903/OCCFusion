@@ -1,4 +1,5 @@
 'use client';
+import CameraViewer from './CameraViewer';
 
 import dynamic from 'next/dynamic';
 import { useCallback, useEffect, useMemo, useState } from 'react';
@@ -223,6 +224,7 @@ export default function Viewer({ user, onLogout }: { user: User; onLogout: () =>
           <div className="details-grid"><Timing run={run}/><section className="card allocator-card"><div className="card-title"><h2>Bộ cấp phát PyTorch</h2><span className="micro-tag">ALLOCATOR</span></div><div className="allocator-values"><div><span>Peak allocated</span><strong>{gib(run.allocator.peak_allocated_bytes)}</strong></div><div><span>Peak reserved</span><strong>{gib(run.allocator.peak_reserved_bytes)}</strong></div></div><p className="footnote">Thống kê allocator, không phải VRAM vật lý được đo độc lập.</p></section></div>
           <section className="card provenance-card"><div className="provenance-label"><Glyph name="check" size={16}/> Nguồn kết quả</div><div className="checkpoint"><span>CHECKPOINT</span><code title={run.checkpoint?.path}>{run.checkpoint?.path.split('/').pop() || '—'}</code></div><div className="checkpoint-hash"><span>SHA-256</span><code title={run.checkpoint?.sha256}>{run.checkpoint?.sha256 ? `${run.checkpoint.sha256.slice(0, 16)}…` : '—'}</code></div>{prediction && <span className="verified-pill" title={prediction.validation.npz_token}><Glyph name="check" size={13}/> Sample & cảm biến đã đối chiếu</span>}</section>
           {prediction && <p className="provenance-note">Đối chiếu metadata, report và nuScenes. NPZ không chứa sample token riêng; shape và số voxel từng lớp khớp report.</p>}
+          {prediction&&<CameraViewer key={'camera-'+run.run_id} endpoint={'/api/runs/'+encodeURIComponent(run.run_id)+'/cameras'} user={user}/>}
           <ReviewPanel key={run.run_id} run={run} user={user} onChange={reviewChanged}/>
         </>}
         <footer className="page-footer"><span>RAV25 / OFFLINE OCCUPANCY ANALYSIS</span><span>{run?.kind === 'check_only' ? 'Check-only · chưa chạy forward' : run?.evaluation?.status === 'matched' ? 'Prediction đã lưu · GT đã ghép' : 'Prediction đã lưu · chưa có GT đã ghép'}</span></footer>

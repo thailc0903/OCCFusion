@@ -23,6 +23,7 @@ class Settings:
     benchmark_roots: tuple[Path, ...] | None = None
     job_profiles_path: Path = REPO / 'web/inference_profiles.json'
     gpu_lock_path: Path = REPO / 'work/inference-worker/gpu.lock'
+    camera_policy_path: Path = REPO / 'web/camera_policy.json'
 
     @property
     def benchmark_directories(self):
@@ -73,4 +74,5 @@ class Settings:
                    tuple(absolute(root) for root in evaluations),
                    tuple(absolute(root) for root in benchmarks),
                    absolute(os.environ.get('VIEWER_JOB_PROFILES', value.get('job_profiles_path', 'inference_profiles.json'))),
-                   absolute(os.environ.get('VIEWER_GPU_LOCK', value.get('gpu_lock_path', '../work/inference-worker/gpu.lock'))))
+                   absolute(os.environ.get('VIEWER_GPU_LOCK', value.get('gpu_lock_path', '../work/inference-worker/gpu.lock'))),
+                   absolute(os.environ.get('VIEWER_CAMERA_POLICY', value.get('camera_policy_path', 'camera_policy.json'))))

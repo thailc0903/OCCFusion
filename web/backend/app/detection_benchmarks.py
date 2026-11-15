@@ -508,4 +508,6 @@ class DetectionBenchmarkStore:
             playback_note='Prediction + LiDAR đã lưu; không tạo job/publication receipt; chưa phải learned 4D flow.')
         loaded = LoadedRun(detail, lidar=points.tobytes())
         loaded.metadata = meta
+        loaded.camera_artifacts = {name:(frame['folder']/name,expected)
+            for name,expected in frame['artifacts'].items()}
         return detail, loaded
