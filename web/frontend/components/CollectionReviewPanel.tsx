@@ -4,8 +4,8 @@ import { useState } from 'react';
 import { downloadCollection, postJSON } from '../lib/api';
 import type { CollectionReviewInfo, User } from '../lib/types';
 
-export default function CollectionReviewPanel({ id, info, user, onChange }: {
-  id: string; info: CollectionReviewInfo; user: User; onChange: (value: CollectionReviewInfo) => void;
+export default function CollectionReviewPanel({ id, info, user, onChange, task='occupancy' }: {
+  id: string; info: CollectionReviewInfo; user: User; onChange: (value: CollectionReviewInfo) => void; task?:'occupancy'|'detection';
 }) {
   const [comment, setComment] = useState('');
   const [busy, setBusy] = useState(false);
@@ -25,7 +25,7 @@ export default function CollectionReviewPanel({ id, info, user, onChange }: {
   const disabled = busy || !comment.trim();
   return <section className="card collection-review" data-testid="collection-review">
     <div className="card-title"><h2>Review collection</h2><span className={`review-state state-${info.state}`} data-testid="collection-state">{info.state}</span></div>
-    <p>Snapshot riêng của tập frame và pooled evaluation. Approval của run v1/v2 giữ nguyên. Phê duyệt tập con không biến coverage thành complete.</p>
+    <p>{task==='detection'?'Snapshot riêng của manifest, detection từng frame, prediction nuScenes, protocol, evaluation bất biến và report GPU gốc. Approval occupancy hoặc detection một frame không bao gồm collection này.':'Snapshot riêng của tập frame và pooled evaluation. Approval của run v1/v2 giữ nguyên. Phê duyệt tập con không biến coverage thành complete.'}</p>
     {info.registered && <><p>Revision <b>{info.revision_number}</b> · Owner <b>{info.owner?.username}</b></p><code className="collection-fingerprint">{info.fingerprint}</code>
       <p data-testid="collection-integrity">{info.artifact_matches && info.manifest_matches ? 'Hash artifact & manifest khớp' : `Hash không khớp: ${info.error || 'sidecar đã thay đổi'}`}</p></>}
     {info.permissions.note || info.permissions.register || info.permissions.submit || info.permissions.decide || info.permissions.revise ? <label className="collection-comment">Nhận xét collection<textarea aria-label="Nhận xét collection" value={comment} onChange={e => setComment(e.target.value)} disabled={busy} maxLength={4000}/></label> : null}

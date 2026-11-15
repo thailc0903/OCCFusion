@@ -236,9 +236,63 @@ def create_app(settings=None):
         return dict(snapshot.detail,review=collections.describe(request.state.auth,benchmark_id,snapshot))
 
     @app.get('/api/benchmarks/{benchmark_id}/frames/{sample_token}')
-    def benchmark_frame(benchmark_id: str, sample_token: str, request: Request):
+    def benchmark_frame(benchmark_id: str, sample_token: str, request: Request, occupancy_run_id: str | None = None, occupancy_benchmark_id: str | None = None):
         collection_visible(request,benchmark_id)
-        return benchmarks.frame(benchmark_id,sample_token)[0]
+        detail, loaded = benchmarks.frame(benchmark_id,sample_token)
+        if occupancy_run_id is not None and occupancy_benchmark_id is not None:
+            raise HTTPException(409,'Choose one occupancy overlay source')
+        if occupancy_run_id is not None:
+            if detail.get('task') != 'detection': raise HTTPException(409,'Occupancy overlay requires a detection benchmark frame')
+            visible(request,occupancy_run_id)
+            overlay=store.get(occupancy_run_id).detail
+            from .detections import pair
+            pair(loaded.metadata,__import__('json').loads(store.artifact(store.folder(occupancy_run_id),'metadata.json').read_bytes()))
+            detail=dict(detail,occupancy_overlay=overlay)
+        if occupancy_benchmark_id is not None:
+            if detail.get('task')!='detection': raise HTTPException(409,'Detection frame required')
+            collection_visible(request,occupancy_benchmark_id)
+            overlay,occupancy_loaded=benchmarks.frame(occupancy_benchmark_id,sample_token)
+            if overlay.get('task')=='detection' or not overlay['prediction_available']:
+                raise HTTPException(409,'A saved occupancy prediction is required')
+            from .detections import pair
+            pair(loaded.metadata,occupancy_loaded.metadata)
+            detail=dict(detail,occupancy_overlay=overlay)
+        return detail
+
+    @app.get('/api/benchmarks/{benchmark_id}/frames/{sample_token}/overlays')
+    def benchmark_frame_overlays(benchmark_id: str, sample_token: str, request: Request):
+        collection_visible(request,benchmark_id)
+        detail,loaded=benchmarks.frame(benchmark_id,sample_token)
+        if detail.get('task')!='detection': raise HTTPException(409,'Detection frame required')
+        matches,rejected=[],[]
+        from .detections import pair
+        for item in store.list_runs():
+            if item.get('sample_token')!=sample_token or not item.get('prediction_available'): continue
+            try:
+                visible(request,item['run_id'])
+                meta=__import__('json').loads(store.artifact(store.folder(item['run_id']),'metadata.json').read_bytes())
+                store.get(item['run_id'])
+                pair(loaded.metadata,meta)
+                matches.append(dict(run_id=item['run_id'],sample_token=sample_token,scene_name=meta['scene']['name'],frame_index=meta['frame_index']))
+            except HTTPException as error:
+                if error.status_code!=403: raise
+            except (OSError,ValueError,KeyError) as error:
+                rejected.append(dict(run_id=item['run_id'],reason=str(error)))
+        for item in benchmarks.list_benchmarks():
+            if item.get('task','occupancy')!='occupancy': continue
+            try:
+                collection_visible(request,item['benchmark_id'])
+                overlay,occupancy_loaded=benchmarks.frame(item['benchmark_id'],sample_token)
+                if not overlay['prediction_available']: continue
+                pair(loaded.metadata,occupancy_loaded.metadata)
+                matches.append(dict(benchmark_id=item['benchmark_id'],sample_token=sample_token,
+                    scene_name=overlay['scene']['name'],frame_index=overlay['frame_index']))
+            except HTTPException as error:
+                if error.status_code!=403: raise
+            except FileNotFoundError: continue
+            except (OSError,ValueError,KeyError) as error:
+                rejected.append(dict(benchmark_id=item['benchmark_id'],reason=str(error)))
+        return dict(matches=matches,rejected=rejected,scope='Display overlay only; occupancy is excluded from detection collection approval/export')
 
     @app.get('/api/benchmarks/{benchmark_id}/frames/{sample_token}/{kind}')
     def benchmark_payload(benchmark_id: str, sample_token: str, kind: Literal['occupancy','lidar','bev'], request: Request, bundle: str | None = None):
@@ -246,6 +300,7 @@ def create_app(settings=None):
         detail,loaded=benchmarks.frame(benchmark_id,sample_token)
         if not detail['prediction_available']: raise HTTPException(409,'Failed frame has no saved prediction; inference is disabled')
         if bundle is not None and bundle!=detail['bundle_fingerprint']: raise HTTPException(409,'Frame bundle changed; reload the saved frame')
+        if detail.get('task')=='detection' and kind!='lidar': raise HTTPException(409,'Detection frame has no occupancy or BEV artifact')
         return Response(getattr(loaded,kind),media_type='image/png' if kind=='bev' else 'application/octet-stream')
 
     @app.get('/api/collections/{collection_id}/review')

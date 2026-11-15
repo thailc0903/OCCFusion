@@ -60,6 +60,14 @@ class BenchmarkStore:
         self.rendered = OrderedDict()
         self.lock = RLock()
         self.evaluations = EvaluationStore(settings)
+        self._detection = None
+
+    @property
+    def detection(self):
+        if self._detection is None:
+            from .detection_benchmarks import DetectionBenchmarkStore
+            self._detection = DetectionBenchmarkStore(self)
+        return self._detection
 
     def folder(self, identifier):
         if not IDENTIFIER.fullmatch(identifier) or identifier in ('.', '..'):
@@ -69,7 +77,7 @@ class BenchmarkStore:
             folder = contained(root / identifier, root)
             if (folder/'manifest.json').is_file():
                 value = read_json(contained(folder/'manifest.json', folder))
-                if value.get('kind') == 'occfusion_occupancy_benchmark':
+                if value.get('kind') in ('occfusion_occupancy_benchmark', 'centerpoint_detection_benchmark'):
                     matches.append(folder)
         if len(set(matches)) != 1:
             raise InvalidArtifact('Benchmark is absent or ambiguous across configured roots')
@@ -86,10 +94,16 @@ class BenchmarkStore:
                 try:
                     folder = self.folder(path.name)
                     manifest = read_json(contained(folder/'manifest.json', folder))
+                    if manifest['kind'] == 'centerpoint_detection_benchmark':
+                        items.append(dict(benchmark_id=path.name, task='detection', status='saved',
+                            split=manifest['identity']['split'], expected_frame_count=len(manifest['identity']['frames']),
+                            successful_frame_count=None, validation='Immutable evaluation/GPU report and all frame hashes checked on open'))
+                        seen.add(path.name)
+                        continue
                     if manifest['identity']['scope'] != 'mini_val':
                         continue
                     report = read_json(contained(folder/'metrics_pooled.json', folder))
-                    items.append(dict(benchmark_id=path.name, status=report['status'],
+                    items.append(dict(benchmark_id=path.name, task='occupancy', status=report['status'],
                         split=report['split'], expected_frame_count=report['expected_frame_count'],
                         successful_frame_count=report['successful_frame_count'],
                         validation='Full hashes/protocol checked when opening collection'))
@@ -322,6 +336,9 @@ class BenchmarkStore:
                     pooled=pooled,initial=initial,latest=latest,entries=entries,provenance=provenance,dataset=dataset,tokens=tokens)
 
     def snapshot(self, identifier):
+        folder = self.folder(identifier)
+        if read_json(contained(folder/'manifest.json',folder))['kind'] == 'centerpoint_detection_benchmark':
+            return self.detection.snapshot(identifier)
         context=self.context(identifier)
         folder,paths,hashes,contents,manifest,progress,pooled,initial,latest,entries,provenance,dataset,tokens=[context[key] for key in
             ('folder','paths','hashes','contents','manifest','progress','pooled','initial','latest','entries','provenance','dataset','tokens')]
@@ -382,6 +399,9 @@ class BenchmarkStore:
 
     def frame(self, identifier, token):
         if not TOKEN.fullmatch(token): raise OutsideRoot('Invalid sample token')
+        folder = self.folder(identifier)
+        if read_json(contained(folder/'manifest.json',folder))['kind'] == 'centerpoint_detection_benchmark':
+            return self.detection.frame(identifier,token)
         context=self.context(identifier)
         entry=next((f for f in context['entries'] if f['sample_token']==token),None)
         if entry is None: raise FileNotFoundError('Sample is not in this benchmark manifest')
@@ -412,4 +432,8 @@ class BenchmarkStore:
         detail['occupancy']['url']=url+'/occupancy'+suffix;detail['lidar']['url']=url+'/lidar'+suffix;detail['bev_url']=url+'/bev'+suffix
         detail.update(evaluation=frame['evaluation'],review=dict(registered=False,state='collection_scope',permissions={},events=[]),
                       collection_id=identifier,bundle_fingerprint=frame['cache_key'],playback_note='Phát lại prediction từng frame đã lưu; chưa phải learned 4D flow.')
+        metadata_bytes=contained(frame['prediction_folder']/'metadata.json',self.folder(identifier)).read_bytes()
+        if record(metadata_bytes)!=context['hashes'][f'frames/{token}/metadata.json']:
+            raise InvalidArtifact('Occupancy frame metadata changed during playback')
+        loaded.metadata=decode(metadata_bytes)
         return detail,loaded

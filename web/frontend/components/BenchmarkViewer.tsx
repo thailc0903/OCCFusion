@@ -5,15 +5,18 @@ import { clearPayloadCache, getJSON } from '../lib/api';
 import type { BenchmarkDetail, CollectionReviewInfo, User } from '../lib/types';
 import BenchmarkFramePlayer from './BenchmarkFramePlayer';
 import CollectionReviewPanel from './CollectionReviewPanel';
+import DetectionBenchmarkPanel from './DetectionBenchmarkPanel';
+import type {DetectionBenchmarkDetail} from '../lib/detectionBenchmarks';
 
 const percent = new Intl.NumberFormat('vi-VN',{style:'percent',maximumFractionDigits:4});
 const number = new Intl.NumberFormat('vi-VN');
 const seconds = (n: number | null) => n === null ? 'Không khả dụng' : `${n.toFixed(4)} s`;
 
 export default function BenchmarkViewer({user,onLogout}: {user: User;onLogout:()=>void}) {
-  const [items,setItems] = useState<{benchmark_id:string;status:string}[]>([]);
+  const [items,setItems] = useState<{benchmark_id:string;status:string;task?:'occupancy'|'detection'}[]>([]);
+  const [task,setTask] = useState('all');
   const [id,setId] = useState('');
-  const [data,setData] = useState<BenchmarkDetail | null>(null);
+  const [data,setData] = useState<BenchmarkDetail | DetectionBenchmarkDetail | null>(null);
   const [scene,setScene] = useState('');
   const [token,setToken] = useState('');
   const [error,setError] = useState('');
@@ -21,7 +24,9 @@ export default function BenchmarkViewer({user,onLogout}: {user: User;onLogout:()
   useEffect(() => {
     const controller=new AbortController();
     getJSON<{benchmarks:typeof items}>('/api/benchmarks',controller.signal).then(value => {
-      setItems(value.benchmarks);setId(previous => value.benchmarks.some(b => b.benchmark_id===previous) ? previous : value.benchmarks[0]?.benchmark_id || '');
+      if(controller.signal.aborted)return;
+      const requested=new URLSearchParams(window.location.search).get('benchmark');
+      setItems(value.benchmarks);setId(previous => value.benchmarks.some(b => b.benchmark_id===previous) ? previous : value.benchmarks.find(b=>b.benchmark_id===requested)?.benchmark_id || value.benchmarks[0]?.benchmark_id || '');
       if (!value.benchmarks.length) setError(user.role==='reviewer'?'Chưa có collection được gửi review.':'Chưa có benchmark mini_val trong thư mục cấu hình.');
     }).catch(e => { if(e.name!=='AbortError')setError(e.message); });
     return () => controller.abort();
@@ -29,12 +34,14 @@ export default function BenchmarkViewer({user,onLogout}: {user: User;onLogout:()
   useEffect(() => {
     if(!id)return;
     const controller=new AbortController();setData(null);setToken('');setError('');
-    getJSON<BenchmarkDetail>(`/api/benchmarks/${encodeURIComponent(id)}`,controller.signal).then(value => {
+    getJSON<BenchmarkDetail | DetectionBenchmarkDetail>(`/api/benchmarks/${encodeURIComponent(id)}`,controller.signal).then(value => {
       if(controller.signal.aborted)return;
       setData(value);const first=value.frames.find(f=>f.prediction_available)||value.frames[0];setScene(first.scene);setToken(first.sample_token);
     }).catch(e => { if(e.name!=='AbortError')setError(e.message); });
     return () => controller.abort();
   }, [id,reload]);
+  const choices=items.filter(b=>task==='all'||(b.task||'occupancy')===task);
+  useEffect(()=>{const available=items.filter(b=>task==='all'||(b.task||'occupancy')===task);if(!available.some(b=>b.benchmark_id===id)){setData(null);setId(available[0]?.benchmark_id||'');}},[items,task,id]);
   const selected=data?.frames.find(f=>f.sample_token===token);
   function changeScene(name:string) {
     setScene(name);const frames=data!.frames.filter(f=>f.scene===name);setToken((frames.find(f=>f.prediction_available)||frames[0]).sample_token);
@@ -44,10 +51,11 @@ export default function BenchmarkViewer({user,onLogout}: {user: User;onLogout:()
     <header className="topbar"><a className="brand" href="/"><span className="brand-mark">R</span><span><strong>RAV25</strong><span className="brand-sub">OCCUPANCY LAB</span></span></a><nav className="benchmark-nav"><a href="/">Run explorer</a><a href="/benchmarks" aria-current="page">Benchmark</a></nav><span className="local-badge"><i/> LOCAL / SAVED ARTIFACTS</span><div className="account-menu"><span><b>{user.username}</b><small>{user.role}</small></span><button onClick={onLogout}>Đăng xuất</button></div></header>
     <main className="benchmark-main">
       <div className="page-heading"><div><div className="eyebrow">SET-LEVEL EVALUATION / NUSCENES MINI_VAL</div><h1>Benchmark collection<span className="title-period">.</span></h1><p>Phát lại prediction đã lưu; chưa phải learned 4D flow.</p></div><span className="replay-badge">↻ Không chạy inference / GPU</span></div>
-      <div className="benchmark-picker"><label>Benchmark đã lưu<select aria-label="Chọn benchmark" value={id} onChange={e=>setId(e.target.value)}>{items.map(b=><option key={b.benchmark_id} value={b.benchmark_id}>{b.benchmark_id} · {b.status}</option>)}</select></label><button onClick={()=>{clearPayloadCache();setReload(n=>n+1);}}>Đọc lại artifact</button></div>
+      <div className="benchmark-picker"><label>Task<select aria-label="Task benchmark" value={task} onChange={e=>{setData(null);setTask(e.target.value);}}><option value="all">Tất cả task</option><option value="occupancy">Occupancy</option><option value="detection">Detection · CenterPoint LiDAR-only</option></select></label><label>Benchmark đã lưu<select aria-label="Chọn benchmark" value={id} onChange={e=>{setData(null);setId(e.target.value);}}>{choices.map(b=><option key={b.benchmark_id} value={b.benchmark_id}>{b.task==='detection'?'Detection':'Occupancy'} · {b.benchmark_id} · {b.status}</option>)}</select></label><button onClick={()=>{clearPayloadCache();setData(null);setReload(n=>n+1);}}>Đọc lại artifact</button></div>
       {error&&<div className="error-panel" role="alert"><h2>Không thể xác minh collection</h2><p>{error}</p><p>Metric không được ghép khi token, hình học, protocol hoặc hash không hợp lệ.</p></div>}
       {!data&&!error&&<div className="loading-panel"><span className="spinner"/><div><strong>Đang xác minh artifact benchmark</strong><p>Đối chiếu các frame, pooled confusion matrix, protocol, audit và hash. Lượt đầu có thể mất khoảng vài chục giây.</p></div></div>}
-      {data&&<>
+      {data?.task==='detection'&&<DetectionBenchmarkPanel data={data} user={user} onReviewChange={reviewChanged}/>}
+      {data&&data.task!=='detection'&&<>
         <section className="benchmark-status card"><div><span className={`benchmark-badge ${data.status}`} data-testid="benchmark-status">{data.status.toUpperCase()}</span><h2 data-testid="benchmark-coverage">{data.successful_frame_count}/{data.expected_frame_count} frame hợp lệ</h2><p>{data.failed_frame_count} frame thất bại · {data.split}, không phải toàn nuScenes validation</p></div><div className="benchmark-scenes">{Object.entries(data.scene_counts).map(([name,count])=><p key={name}><b>{name}</b><span>{count} frame có evaluation</span></p>)}</div><div><span className="precision-chip">{data.precision} · batch 1</span><p>TF32 matmul: {String(data.tf32.matmul)}<br/>TF32 cuDNN: {String(data.tf32.cudnn)}</p></div></section>
         <div className="benchmark-summary-grid"><section className="card benchmark-metrics"><div className="card-title"><h2>Pooled accuracy</h2><span className="micro-tag">TỔNG COUNTS → TỶ LỆ</span></div><div className="benchmark-metric-pair"><div><span>Occupancy IoU</span><b data-testid="pooled-iou">{percent.format(data.metrics.occupancy_iou)}</b></div><div><span>Semantic mIoU</span><b data-testid="pooled-miou">{percent.format(data.metrics.semantic_miou)}</b></div></div><p>Trung bình đủ <b>{data.protocol.semantic_mean_class_count} lớp</b>; union = 0 nhận IoU 0. Warm-up vẫn tính accuracy.</p><p>{number.format(data.metrics.valid_voxel_count)} voxel hợp lệ · chỉ {data.successful_frame_count} frame thành công. Không trung bình IoU từng frame.</p></section>
           <section className="card benchmark-latency" data-testid="benchmark-latency"><div className="card-title"><h2>Forward từ lượt GPU gốc</h2><span className="micro-tag">CUDA SYNCHRONIZED</span></div><div className="benchmark-metric-pair"><div><span>Median</span><b data-testid="benchmark-median">{seconds(data.latency.median_s)}</b></div><div><span>p95</span><b data-testid="benchmark-p95">{seconds(data.latency.p95_s)}</b></div></div><p><b>{data.latency.sample_count} mẫu</b>, bỏ {data.latency.warmup_count} warm-up khỏi {data.latency.all_forward_sample_count} forward thật. Không dùng thời gian đọc cache/evaluate-only.</p><p data-testid="benchmark-latency-source">Nguồn: <code>{data.latency.source_report}</code> · session <code>{data.latency.source_session_id}</code></p><small>Một lượt sequential trên laptop; chưa phải latency ổn định qua nhiều trial.</small></section></div>

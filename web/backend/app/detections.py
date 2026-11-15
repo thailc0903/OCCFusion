@@ -8,7 +8,7 @@ from .task_types import DETECTION_FILES
 CLASSES=['car','truck','construction_vehicle','bus','trailer','barrier','motorcycle','bicycle','pedestrian','traffic_cone']
 CONVENTION=dict(center='geometric',dimensions=['dx','dy','dz'],yaw='radians, CCW about +Z, zero along +X',velocity=['vx','vy'],velocity_unit='m/s')
 
-def _validate_detection(folder,settings,files=None):
+def _validate_detection(folder,settings,files=None,catalog=None):
     files=files if files is not None else {n:contained(folder/n,folder).read_bytes() for n in DETECTION_FILES}
     meta,report,doc=(decode(files[n]) for n in ('metadata.json','report.json','detections.json'))
     if meta.get('schema_version')!=1 or doc.get('schema_version')!=1:raise InvalidArtifact('Unsupported detection schema version')
@@ -39,11 +39,11 @@ def _validate_detection(folder,settings,files=None):
         if any(x<=0 for x in box['dimensions']) or not np.isfinite(box['yaw']) or not np.isfinite(box['score']) or not 0<=box['score']<=1 or type(box['label']) is not int or not 0<=box['label']<10:
             raise InvalidArtifact('Invalid detection dimensions/yaw/score/label')
     if doc['postprocessing']['nms_type']!='circle' or doc['postprocessing']['display_filter_applied'] is not False:raise InvalidArtifact('Detection postprocessing protocol mismatch')
-    SensorCatalog(settings).lidar(meta,meta['bounds'])
+    (catalog or SensorCatalog(settings)).lidar(meta,meta['bounds'])
     return meta,report,doc
 
-def validate_detection(folder,settings,files=None):
-    try:return _validate_detection(folder,settings,files)
+def validate_detection(folder,settings,files=None,catalog=None):
+    try:return _validate_detection(folder,settings,files,catalog)
     except (TypeError,IndexError,OverflowError) as e:raise InvalidArtifact('Malformed detection schema: '+str(e)) from e
 
 def pair(meta,occupancy):
