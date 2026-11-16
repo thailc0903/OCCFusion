@@ -195,7 +195,7 @@ def verify_zip(path):
             review=r,channels=m['channels'],path=str(path))
 
 
-def main():
+def main(evidence_root=None):
     for port in (8007,3007):
         with socket.socket() as probe:
             if probe.connect_ex(('127.0.0.1',port))==0:raise RuntimeError('QA port occupied: '+str(port))
@@ -241,7 +241,9 @@ def main():
             assert info['fingerprint']==exported['fingerprint'] and any(e['action']=='export' for e in info['events'])
         result=json.loads((qa/'browser-evidence.json').read_text())
         result.update(qa_directory=str(qa),export=exported,restart='passed',worker_started=False,inference_or_evaluator_run=False)
-        (ROOT/'work_dirs/web_camera_qa/browser_evidence.json').write_text(json.dumps(result,ensure_ascii=False,indent=2)+'\n')
+        evidence_root=evidence_root or ROOT/'work_dirs/web_camera_qa'
+        evidence_root.mkdir(parents=True,exist_ok=True)
+        (evidence_root/'browser_evidence.json').write_text(json.dumps(result,ensure_ascii=False,indent=2)+'\n')
         print(json.dumps(dict(status='passed',qa=str(qa),export_files=exported['files_verified']),indent=2))
     finally:
         stop(frontend);stop(backend)

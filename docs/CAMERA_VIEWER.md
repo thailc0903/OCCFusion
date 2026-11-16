@@ -251,8 +251,10 @@ Hai suite full/targeted có phần lặp lại; không cộng thành số test �
 Full 163 chạy trước ba test JSON malformed, kiểm tra timestamp LiDAR và
 stripping metadata cuối; 26 targeted chạy sau các thay đổi đó. Chromium cuối
 chạy với guard giao diện và backend stripping metadata đã hoàn thiện.
-Regression jobs dùng CLI fixture copy-prediction/copy-evaluation, không gọi
-model hoặc evaluator thật. Một warning Starlette/httpx deprecation có sẵn.
+Regression jobs dùng CLI fixture copy-prediction/copy-evaluation; riêng
+test_missing_gt gọi evaluator CPU với GT rỗng và metric null, không tính lại
+benchmark hoặc chạy model/GPU. Camera browser/readiness không gọi evaluator.
+Một warning Starlette/httpx deprecation có sẵn.
 
 Lượt đầu 15 passed/1 failed trước sửa thứ tự PNG verify/getexif được giữ trong
 camera_initial.xml. Chromium đầu đọc state quá sớm sau save; đã thêm chờ POST.

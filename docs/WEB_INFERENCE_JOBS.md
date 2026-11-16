@@ -20,11 +20,12 @@ dùng npm lockfile hiện có; tiến trình CLI dùng Python rav25 riêng.
 cd '/mnt/d/New folder/OCCFusion'
 export PATH="$PWD/.cache/toolchains/node/bin:$PATH"
 NEXT_TELEMETRY_DISABLED=1 npm --prefix web/frontend run build
-bash tools/run_web_viewer.sh
+VIEWER_START_WORKER=1 bash tools/run_web_viewer.sh
 ```
 
 Mở **http://localhost:3000/jobs**, đăng nhập bằng tài khoản Engineer hiện có.
-Launcher chạy ba tiến trình riêng: FastAPI, Next.js và worker. Worker chờ queue
+Khi VIEWER_START_WORKER=1, launcher chạy FastAPI, Next.js và worker. Mặc định
+launcher hiện tại tắt worker để chỉ phát lại artifact. Worker chờ queue
 không nạp model. Ctrl+C gửi shutdown cho cả ba. Có thể tách terminal:
 Worker dừng ngoài dự kiến không làm tắt web; heartbeat/queue thể hiện việc
 không có worker. Khởi động worker lại bằng terminal riêng khi cần.
